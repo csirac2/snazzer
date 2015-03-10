@@ -1,0 +1,569 @@
+#!/bin/sh
+set -e
+SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
+SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
+if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+    # Keep in sync with the POD!
+    SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
+fi
+
+if [ "$SNAZZER_USE_UTC" = "1" ]; then
+    DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
+else
+    DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+fi
+
+DEFAULT_MEAS_FILE=".snapshot_measurements"
+
+if [ -z "$SNAZZER_MEASUREMENTS_FILE" ]; then
+    SNAZZER_MEASUREMENTS_FILE="$DEFAULT_MEAS_FILE"
+fi
+
+assert_mountpoint() {
+    FS="$1"
+    if ! mountpoint -q "$FS"; then
+        echo "ERROR: $FS is not a filesystem mountpoint" >&2
+        exit 2
+    fi
+}
+
+assert_subvolume() {
+    SOURCE="$1"
+    if ! eval "btrfs subvolume show '$SOURCE' >/dev/null 2>&1"; then
+        echo "ERROR: $SOURCE is not a btrfs subvolume" >&2
+        exit 3
+    fi
+}
+
+setup_subvols_exclude() {
+    if [ ! -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+        SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=1
+        TMP=$(mktemp)
+        cat <<HERE > "$TMP"
+var/cache
+var/lib/docker
+.snapshots
+*secret*
+HERE
+        cat <<HERE >&2
+ERROR: missing '$SNAZZER_SUBVOLS_EXCLUDE_FILE', should contain entries such as:
+$(cat "$TMP")
+
+Using temporary file $TMP containing the above lines for now...
+HERE
+    SNAZZER_SUBVOLS_EXCLUDE_FILE="$TMP"
+    fi
+}
+
+list_subvolumes() {
+    FS="$1"
+    assert_mountpoint "$FS"
+    if [ "$FS" = "/" ]; then
+        btrfs subvolume list -o "$FS" | \
+            grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS\1|p"
+    else
+        btrfs subvolume list -o "$FS" | \
+            grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS/\1|p"
+    fi
+}
+
+# Get a list of mountpoints from the unique list of devices showing up as
+# mounted btrfs filesystems. We don't want to list bind mounts or manually
+# mounted subvols (who already have their parent/container filesystems mounted)
+# as separate filesystems, that would result in multiple snapshotting of those
+# subvols later on.
+# SMELL: what if a subvol is mounted some place other than its path name?
+list_btrfs_mountpoints() {
+    mount -t btrfs | sed -n 's/^\(.*\) on \(.*\).*/\1/p' | sort | uniq | \
+    xargs --no-run-if-empty -I {} sh -c \
+    'mount -t btrfs| grep "{}" |head -n 1 |sed -n "s/^.* on \(.*\) type.*/\1/p"'
+}
+
+get_subvol_path() {
+    SOURCE="$1"
+    if [ "$(btrfs subvolume show . | grep -c 'is btrfs root$')" = "0" ]; then
+        UUID=$(btrfs subvolume show "$SOURCE" |
+            sed -n "s/^[ \t]*uuid:[ \t]*\(.*\)/\1/p")
+        SUBVOL_PATH=$(btrfs subvolume list  -u . |
+            sed -n "s/.*$UUID path \(.*\)/\1/p")
+        echo "$SUBVOL_PATH"
+    fi
+}
+snapshot_exclude_subvols_cmd() {
+cat <<HERE
+    btrfs subvolume list -o '$1' | sed -n 's|.*path $2[/]*\(.*\)|\\1|p'
+HERE
+}
+
+snapshot_exclude_subvols() {
+    SOURCE="$1"
+    SUBVOL_PATH=$(get_subvol_path "$SOURCE" | sed -e 's/[]$*.^|[]/\\&/g' | \
+        sed "s/'/'\\\\''/g")
+    eval "$(snapshot_exclude_subvols_cmd "$SOURCE" "$SUBVOL_PATH")"
+}
+
+build_snapshot_cmd() {
+    SOURCE="$1"
+    SNAP="$2"
+    OLD_PWD=$(pwd | sed "s/'/'\\\''/g")
+
+    cat <<HERE
+#!/bin/sh
+set -e
+btrfs subvolume snapshot '$SOURCE' '${SNAP}.tmp';
+cat <<EXCL > '${SNAP}.tmp/${SNAZZER_MEASUREMENTS_FILE}.exclude';
+$SNAZZER_MEASUREMENTS_FILE
+${SNAZZER_MEASUREMENTS_FILE}.exclude
+$( eval "cd '$SOURCE'"; snapshot_exclude_subvols . | sed -e 's|[`$]|\\&|g' ; eval "cd '$OLD_PWD'")
+EXCL
+btrfs subvolume snapshot -r '${SNAP}.tmp' '$SNAP' >/dev/null;
+btrfs subvolume delete '${SNAP}.tmp' >/dev/null;
+HERE
+}
+
+snapshot() {
+    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
+    if [ -f "$SOURCE/${SNAZZER_MEASUREMENTS_FILE}_exclude" ]; then
+        echo "ERROR: $SOURCE/${SNAZZER_MEASUREMENTS_FILE}_exclude" >&2
+        printf "\talready exists in source subvolume, cannot continue\n" >&2
+        exit 6
+    fi
+    assert_subvolume "$SOURCE"
+    if [ "$SOURCE" = "/" ]; then
+        DEST="/.snapshotz"
+    else
+        DEST="$SOURCE/.snapshotz"
+    fi
+    eval "mkdir -p '$DEST'"
+    SNAP="$DEST/$DATE"
+    if [ "$DRY_RUN" = "1" ]; then
+        build_snapshot_cmd "$SOURCE" "$SNAP"
+    else
+        SNAP_SH=$(mktemp)
+        chmod 0700 "$SNAP_SH"
+        build_snapshot_cmd "$SOURCE" "$SNAP" > "$SNAP_SH"
+        sh "$SNAP_SH"
+        rm "$SNAP_SH"
+    fi
+}
+
+newlines2quoted() {
+    printf %s "$1
+" | while IFS= read -r line
+    do
+        LINE="$line"
+        echo -n "'$LINE' "
+    done
+}
+
+prune() {
+    if [ "$SOURCE" = "/" ]; then
+        SOURCE="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's|$|.snapshotz|g')"
+    else
+        SOURCE="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's|$|/.snapshotz|g')"
+    fi
+    assert_subvolume "$SOURCE"
+    eval "if [ ! -d '$SOURCE' ]; then
+        echo 'ERROR: $SOURCE does not exist, cannot prune' >&2;
+        exit 4;
+    fi"
+    SOURCE_TMP=$(eval "ls -d '$SOURCE'/*.tmp 2>/dev/null || true")
+    if [ -n "$SOURCE_TMP" ]; then
+        echo "ERROR: temporary snapshots left over from an aborted or" >&2
+        echo "currently in-progress run detected. Refusing to run in the" >&2
+        echo "presence of the following:" >&2
+        echo "$SOURCE_TMP" >&2
+        exit 8
+    fi
+    TO_PRUNE=$(eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | \
+        snazzer-prune-candidates" | sed "s/'/'\\\\''/g")
+    NUM_PRUNE="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | \
+        snazzer-prune-candidates | wc -l")"
+    NUM_AVAIL="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | wc -l")"
+    echo "$SOURCE: pruning $NUM_PRUNE of $NUM_AVAIL"
+    if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
+        if [ "$NUM_PRUNE" != "0" ]; then
+            PRUNE_ARGS=$(newlines2quoted "$TO_PRUNE")
+            eval "$(echo "btrfs subvolume delete $PRUNE_ARGS")"
+        fi
+    elif [ "$DRY_RUN" = "1" ]; then
+        printf "\t--dry-run specified so skipping btrfs subvolume delete\n"
+    else
+        echo "ERROR: --prune expected --force or --dry-run" >&2
+        exit 5
+    fi
+}
+
+build_measure_cmd() {
+    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
+
+    cat <<HERE
+#!/bin/sh
+set -e
+printf "\t$SOURCE\n"
+btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp' >/dev/null;
+cd '${SOURCE}.tmp';
+snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
+snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
+cd ..
+btrfs subvolume delete '${SOURCE}' >/dev/null;
+btrfs subvolume snapshot -r '${SOURCE}.tmp' '$SOURCE' >/dev/null;
+btrfs subvolume delete '${SOURCE}.tmp' >/dev/null;
+HERE
+}
+
+# If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
+# to already have made a measurement in the past
+measure() {
+    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
+    SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/\/.snapshotz/')"
+    OLD_DIR=$(pwd)
+    eval "if [ ! -d '$SHOTZ' ]; then
+        echo \"ERROR: '$SHOTZ' does not exist, cannot measure\" >&2;
+        exit 4;
+    fi"
+    eval "cd '$SHOTZ'"
+    assert_subvolume "."
+    if [ -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
+        echo "ERROR: Another snazzer --measure invocation is already running"
+        echo "\tPID: $(cat "$SNAZZER_MEAS_LOCK_DIR/pid")"
+        exit 7
+    else
+        mkdir "$SNAZZER_MEAS_LOCK_DIR"
+        echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
+    fi
+    if [ "$DO_FORCE" = "1" ]; then
+        TO_MEAS=$(find . -maxdepth 1 -mindepth 1 -type d | sed "s/'/'\\''/g")
+    else
+        TO_MEAS=$(find . -maxdepth 1 -mindepth 1 -type d -exec /bin/sh -c "grep -sL '^> on $(hostname) at' '{}/$SNAZZER_MEASUREMENTS_FILE' || echo '{}' | sed 's/$SNAZZER_MEASUREMENTS_FILE$//'" \;)
+    fi
+    NUM_MEAS="$( eval "echo -n '$TO_MEAS' |grep . | wc -l")"
+    NUM_AVAIL="$( find '.' -maxdepth 1 -mindepth 1 -type d | wc -l)"
+    echo "measuring $NUM_MEAS of $NUM_AVAIL in '$SHOTZ':"
+    echo "$TO_MEAS" |grep . |sed "s/'/'\\''/g" | while read SUBVOL
+    do
+        if [ "$DRY_RUN" = "1" ]; then
+            eval "build_measure_cmd '$SUBVOL'"
+        else
+            SNAP_SH=$(mktemp)
+            chmod 0700 "$SNAP_SH"
+            eval "build_measure_cmd '$SUBVOL' > '$SNAP_SH'"
+            sh "$SNAP_SH"
+            rm "$SNAP_SH"
+        fi
+    done
+    rm "$SNAZZER_MEAS_LOCK_DIR/pid"
+    rmdir "$SNAZZER_MEAS_LOCK_DIR"
+    eval "cd '$OLD_DIR'"
+}
+
+do_multiple() {
+    DO_ACTION="$1"
+    shift
+    for SOURCE in "$@"; do
+        if [ "$SOURCE" != "/" ]; then
+            SOURCE=$(echo "$SOURCE" | sed 's|/$||g')
+        fi
+        case "$DO_ACTION" in
+            'prune')    prune "$SOURCE"
+                        ;;
+            'snapshot') snapshot "$SOURCE"
+                        ;;
+            'measure')  measure "$SOURCE"
+                        ;;
+            *) echo "ERROR: invalid cmd '$DO_ACTION'"
+               exit 1
+               ;;
+        esac
+    done
+    sync
+}
+
+test_img_write() {
+    FILE="$1"
+    SIZE="$2"
+    dd if=/dev/urandom of="$FILE" bs="$SIZE" count="1"
+}
+
+test_img_populate() {
+    MNT="$1"
+    OLD_PWD="$(pwd)"
+    cd "$MNT"
+    for SUBVOL in srv home etc/secrets var/lib/docker/btrfs var/cache \
+        usr/local/src "this is/something with/spaces in it" \
+        'BAM_$(ls *)/`echo sierra`' \
+        'echo `ls "/"; ls /;`; ~!@#$%^&*()_+-='"'"'[]'"'"'{}|:<>,./?'; do
+        SUBVOL_PARENT="$(dirname "$SUBVOL")"
+        SUBVOL_NAME="$(basename "$SUBVOL")"
+        mkdir -p "$SUBVOL_PARENT"
+        btrfs subvolume create "$SUBVOL"
+        test_img_write "$SUBVOL/${SUBVOL_NAME}_junk" 500K
+        if [ "$SUBVOL_PARENT" = "." ]; then
+            test_img_write "${SUBVOL_NAME}_junk" 500K
+        else
+            test_img_write "${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
+        fi
+    done
+    cd "$OLD_PWD"
+}
+
+test_img_create() {
+    IMG="$1"
+    if [ -z "$IMG" ]; then
+        echo "ERROR: --generate-test-img missing filename" >&2;
+        exit 1;
+    fi
+    MNT="$(mktemp -d)"
+    truncate -s 40M "$IMG"
+    mkfs.btrfs "$IMG"
+    mount "$IMG" "$MNT"
+    test_img_populate "$MNT"
+    umount "$MNT"
+    rmdir "$MNT"
+}
+
+DO_ACTION="snapshot"
+DO_FORCE=0
+DRY_RUN=0
+DO_ALL=0
+
+while [ "$(echo "$1" | grep -c "^-")" != 0 ]
+do
+    case "$1" in
+        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+        -p | --prune ) DO_ACTION="prune"; ;;
+        -m | --measure ) DO_ACTION="measure"; ;;
+        -f | --force ) DO_FORCE=1; ;;
+        -d | --dry-run ) DRY_RUN=1; ;;
+        -a | --all ) DO_ALL=1; ;;
+        -g | --generate-test-img ) test_img_create "$2"; exit; ;;
+        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+    esac
+    shift
+done
+
+if [ -z "$1" -a "$DO_ALL" != "1" ]; then
+    pod2usage -exit 0 "$0"
+    echo "ERROR: Missing argument" >&2
+    exit 1
+elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
+    pod2usage -exit 0 "$0"
+    echo "ERROR: --force and --dry-run are incompatible" >&2
+    exit 1
+elif [ "$DO_ALL" = "1" ]; then
+    if [ -z "$1" ]; then
+        setup_subvols_exclude
+        for MOUNTPOINT in $(list_btrfs_mountpoints); do
+            do_multiple "$DO_ACTION" "$MOUNTPOINT"
+            list_subvolumes "$MOUNTPOINT" | while read SUBVOL
+            do
+                do_multiple "$DO_ACTION" "$SUBVOL"
+            done
+        done
+    elif [ -z "$2" ]; then
+        setup_subvols_exclude
+        # Repeat the container filesystem here, so that it's included
+        do_multiple "$DO_ACTION" "$1"
+        list_subvolumes "$1" | while read SUBVOL
+        do
+            do_multiple "$DO_ACTION" "$SUBVOL"
+        done
+    else
+        pod2usage -exit 0 "$0"
+        echo "ERROR: Extraneous argument '$2'" >&2
+        exit 1
+    fi
+else
+    do_multiple "$DO_ACTION" "$@"
+fi
+if [ "$SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP" = "1" ]; then
+    rm "$SNAZZER_SUBVOLS_EXCLUDE_FILE";
+fi
+
+exit
+
+__END__
+=head1 NAME
+
+snazzer - create read-only C</subvol/.snapshotz/[isodate]> btrfs snapshots,
+offers pruning of unneeded snapshots according to retention preferences.
+
+=head1 SYNOPSIS
+
+  snazzer [--prune|--measure [--force ]] [--dry-run] --all
+
+  snazzer [--prune|--measure [--force ]] [--dry-run] --all [mountpoint]
+
+  snazzer [--prune|--measure [--force ]] [--dry-run] subvol1 [subvol2 [...]]
+
+=head1 DESCRIPTION
+
+Examples:
+
+Snapshot all non-excluded subvols on all mounted btrfs filesystems:
+
+  snazzer --all
+
+Prune all non-excluded subvols on all mounted btrfs filesystems:
+
+  snazzer --prune --force --all
+
+Append output of B<snazzer-measure> to C<.snapshot_measurements> in all
+snapshots of all subvolumes on all mounted btrfs filesytems (slow!):
+
+  snazzer --measure --force --all
+
+As above, skipping snapshots already measured by this host (recommended):
+
+  snazzer --measure --all
+
+Print rather than execute commands for snapshotting all non-excluded subvols for
+the filesystem mounted at /mnt (including /mnt itself):
+
+  snazzer --dry-run --all /mnt
+
+Prune only the explicitly named subvols at /srv, /var/log and root:
+
+  snazzer --prune /srv /var/log /
+
+=head1 OPTIONS
+
+=over 1
+
+=item B<--all> B<[mountpoint]>: act on all subvolumes under mountpoint. If
+mountpoint is omitted, B<snazzer> acts on all mounted btrfs filesystems.
+
+=item B<--prune>: delete rather than create snapshots. Exactly which are no
+longer needed is B<snazzer-prune-candidates>'s role, documented separately
+
+=item B<--measure>: append output of B<snazzer-measure> to the
+C<.snapshot_measurements> file in the root of each snapshot. By default, only
+snapshots which haven't been measured by this hostname are updated - use
+B<--force> to measure all snapshots
+
+=item B<--force>: required for B<--prune> to carry out any pruning operation.
+For B<--measure>, this switch overrides the default behaviour of skipping
+snapshots already measured by current hostname
+
+=item B<--dry-run>: print rather than execute commands that would be run
+
+=item B<--help>: Brief help message
+
+=item B<--man>: Full documentation
+
+=item B<--generate-test-img> C<file.img>: create btrfs image for testing
+
+=item - B<SNAZZER_SUBVOLS_EXCLUDE_FILE> (envar): filename of newline separated
+list of shell glob patterns of subvolume pathnames which should be excluded from
+C<snazzer --all> invocations; compatible with C<--exclude-from> for B<du> and
+B<tar>.  Examples of subvolume patterns to exclude from regular snapshotting:
+*secret*, /var/cache, /var/lib/docker/btrfs, .snapshots.
+B<NOTE:> C<.snapshotz> is always excluded. Default:
+
+  SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
+
+=item - B<SNAZZER_USE_UTC>=1 (envar): for snapshot naming and B<snazzer-measure>
+output use UTC times of the form C<YYYY-MM-DDTHHMMSSZ> instead of local
+time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
+
+=back
+
+=head1 BUGS AND LIMITATIONS
+
+=over 1
+
+=item Snapshot naming
+
+A choice has been made to mint a single datetime string which is used for all
+snapshot names in a given B<snazzer> invocation, regardless of how long or at
+which exact time the snapshotting process takes place for each subvolume. This
+makes for consistency across all subvolumes and filesystems, in case identifying
+which disparate group of snapshots were part of a single snapshotting run. If
+the actual datetime of the snapshot event is important to you, this is available
+from the C<btrfs subvolume show> command.
+
+=item BTRFS subvolume path name assumption
+
+An assumption has been made that a subvolume will mounted under the same path
+(relative to mountpoint) as its path name indicated by C<btrfs subvolume list>.
+If you have manually mounted subvolumes under mountpoints inconsistent with this
+assumption, breakage will occur.
+
+=item .snapshot_measurements.exclude is a giant work-around to a BTRFS bug
+
+Basically, snapshots may include empty directories under which some other subvol
+may have existed in the original, snapshotted subvolume. But these empty
+directories behave differently to empty directories created with `mkdir`: the
+atimes are always set to whatever the current time happens to be. So we have
+no hope of creating reproducible shasums or PGP signatures unless those
+directories are excluded from our measurements of the snapshot.
+
+http://comments.gmane.org/gmane.comp.file-systems.btrfs/43452
+https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
+
+=back
+
+=head1 EXIT STATUS
+
+B<snazzer> will abort with an error message printed to STDERR and non-zero exit
+status under the following conditions:
+
+=over 1
+
+=item 1 - invalid arguments
+
+=item 2 - path is not a filesystem mountpoint
+
+=item 3 - one or more paths were not btrfs subvolumes
+
+=item 4 - prune expected /path/to/subvol/.snapshotz directory which was missing
+
+=item 5 - prune expected --dry-run or --force
+
+=item 6 - tried to write a .snapshot_measurements.exclude file in the snapshot
+root, but it already exists in the current subvolume
+
+=item 7 - tried to perform snapshot measurements while existing measurements are
+already in progress, check lock dir at /var/run/snazzer-measure.lock
+
+=item 8 - detected left-over *.tmp snapshots in the .snapshotz path. These could
+also indicate that another snazzer operation is currently already running.
+
+=back
+
+=head1 SEE ALSO
+
+snazzer-measure, snazzer-prune-candidates, snazzer-receive
+
+=head1 AUTHOR
+
+Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+=cut

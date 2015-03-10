@@ -1,0 +1,1212 @@
+#!/usr/bin/perl -w
+package App::Snazzer::Prune;
+use strict;
+use warnings;
+use 5.010;
+our $VERSION = 0.1;
+
+# Hrm, let's see if I can remember how to perl...
+BEGIN {
+    use Exporter 'import';
+    our @EXPORT_OK = (
+        qw(datetime2string datetime2epoch epoch2string),
+        qw(parse_line days_in_month diff_datetimes process)
+    );
+}
+use Getopt::Long(qw(GetOptions));
+use Pod::Usage(qw(pod2usage));
+use Time::Local(qw(timegm));
+use POSIX qw(strftime);
+
+# Don't forget to keep in sync with POD...
+my %retain_defaults = (
+    yearlies  => 1000,
+    monthlies => 12,
+    daylies   => 31,
+    hourlies  => 24,
+);
+my %retain_env_map =
+  map { $_ => 'SNAZZER_' . uc($_) . '_TO_KEEP' } keys %retain_defaults;
+my %opts = (
+    man          => 0,
+    help         => 0,
+    verbose      => 0,
+    run_tests    => 0,
+    gen_examples => 0,
+    invert       => 0,
+);
+my %retain;
+
+sub init {
+    GetOptions(
+        'help|?'            => \$opts{help},
+        'man'               => \$opts{man},
+        'tests'             => \$opts{run_tests},
+        'gen-example-input' => \$opts{gen_examples},
+        'verbose'           => \$opts{verbose},
+        'invert'            => \$opts{invert},
+        'yearlies=i'        => \$retain{yearlies},
+        'monthlies=i'       => \$retain{monthlies},
+        'daylies=i'         => \$retain{daylies},
+        'hourlies=i'        => \$retain{hourlies},
+    ) or pod2usage(2);
+    pod2usage(1) if $opts{help};
+    pod2usage( -exitval => 0, -verbose => 2 ) if $opts{man};
+
+    foreach my $part ( sort keys %retain_defaults ) {
+        if ( defined $retain{$part} ) {
+            log_debug("Using $part=$retain{$part}");
+        }
+        elsif ( exists $ENV{ $retain_env_map{$part} } ) {
+            my $env = $ENV{ $retain_env_map{$part} };
+
+            if ( defined $env && $env =~ /^([0-9]+)$/ ) {
+                $retain{$part} = $1;
+                log_debug("Using $part=$retain{$part}");
+            }
+            else {
+                log_error("Invalid value '$env' for $part");
+                exit 1;
+            }
+        }
+        else {
+            $retain{$part} = $retain_defaults{$part};
+            log_debug("Using $part=$retain{$part}\t(default)");
+        }
+    }
+
+    return;
+}
+
+sub log_error {
+    my ( $string, $exitval ) = @_;
+
+    print STDERR "ERROR: $string\n";
+
+    return;
+}
+
+sub log_debug {
+    my ( $string, $decorate ) = @_;
+
+    if ( $opts{verbose} ) {
+        if ( defined $decorate && !$decorate ) {
+            print STDERR $string;
+        }
+        else {
+            print STDERR "DEBUG: $string\n";
+        }
+    }
+
+    return;
+}
+
+sub dump_datetime {
+    my ( $line, %r ) = @_;
+
+    log_debug("Parse of '$line'");
+    log_debug( "->\tYYYY=$r{year}\tMM=$r{month}\tDD=$r{day}", 0 );
+    if ( defined $r{hour} && defined $r{minute} && defined $r{second} ) {
+        log_debug( "\tHH=$r{hour}\tMM=$r{minute}\tSS=$r{second}", 0 );
+        if ( defined $r{offset_sign} ) {
+            log_debug( "\toff_sign=$r{offset_sign}\toff_HH=$r{offset_hour}",
+                0 );
+            if ( defined $r{offset_minute} ) {
+                log_debug( "\toff_MM=$r{offset_minute}", 0 );
+            }
+        }
+    }
+    log_debug( "\n", 0 );
+
+    return;
+}
+
+sub parse_line {
+    my ($line) = @_;
+
+    $line =~ m/
+    (?<year>\d\d\d\d)
+    [^\d]?
+    (?<month>\d\d)
+    [^\d]?
+    (?<day>\d\d)
+    (
+        T
+        (?<hour>\d\d)
+        [^\d]?
+        (?<minute>\d\d)?
+        [^\d]?
+        (?<second>\d\d)?
+        (
+            (?<zulu>Z)
+            |
+            (?<offset_sign>[\+-])
+            (?<offset_hour>\d\d)
+            [^\d]?
+            (?<offset_minute>\d\d)?
+        )
+    )?
+    $/sxm;
+
+    return %+;
+}
+
+sub datetime2string {
+    my ( $line, %r ) = @_;
+    my $string;
+    my @parts = (qw(hour minute second offset_sign offset_hour offset_minute));
+    my %mandatory = (
+        hour        => 1,
+        offset_sign => 1,
+        offset_hour => 1,
+    );
+
+    # normalize zulu to zero-offset
+    if ( $r{zulu} ) {
+        delete $r{zulu};
+        $r{offset_sign}   = '+';
+        $r{offset_hour}   = '00';
+        $r{offset_minute} = '00';
+    }
+
+    # if the offset is zero and the sign is negative, normalize it to positive
+    elsif (defined $r{offset_sign}
+        && $r{offset_sign} eq '-'
+        && $r{offset_hour} eq '00'
+        && ( !defined $r{offset_minute} || $r{offset_minute} eq '00' ) )
+    {
+        $r{offset_sign} = '+';
+    }
+    $string = "$r{year}-$r{month}-$r{day}";
+
+    if ( defined $r{hour} ) {
+        $string .= 'T';
+        foreach my $part (@parts) {
+            if ( defined $r{$part} ) {
+                $string .= $r{$part};
+            }
+            elsif ( $mandatory{$part} ) {
+                log_error("Missing $part in line:\t$line");
+                exit 2;
+            }
+            else {
+                $string .= '00';
+            }
+        }
+    }
+    else {
+        $string .= 'T000000+0000';
+    }
+
+    return $string;
+}
+
+sub parse_lines {
+    my (@input) = @_;
+    my %parsed;
+
+    foreach my $line (@input) {
+        my %datetime = parse_line($line);
+
+        if ( my $validation_error = validate_datetime( $line, %datetime ) ) {
+            log_error($validation_error);
+            exit 3;
+        }
+        chomp($line);
+        if ( scalar( keys(%datetime) ) ) {
+            my $epoch = datetime2epoch( \%datetime );
+
+            dump_datetime( $line, %datetime ) if $opts{verbose};
+            $parsed{$epoch} = { datetime => {%datetime}, line => $line };
+        }
+        else {
+            log_error( "Expected line ending in YYYY-MM-DD, "
+                  . "YYYY-MM-DDTHHMMSSZ or\nYYYY-MM-DDTHHMMSS±HHMM: '$line'" );
+            exit 2;
+        }
+    }
+
+    return \%parsed;
+}
+
+sub days_in_month {
+    my ( $year, $month ) = @_;
+    my $is_leap = ( ( $year % 4 ) == 0
+          && ( ( $year % 100 ) != 0 || ( $year % 400 ) == 0 ) );
+    my @months =
+      ( 31, $is_leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 );
+
+    return $months[ $month - 1 ];
+}
+
+# validate_datetime(): tightening up what's a valid date may catch situations
+# where the parser regex has accidentally matched something it's not supposed to
+#
+# However, we allow 25/61/61 hours/minutes/seconds per day/hour/minute.
+#
+# That's because we don't want more leapyear complexity than we have to; and
+# it's probably better to allow a silly snapshot name to persist than for the
+# backups to fail just because a snapshot was taken during a leap-second/min/hr.
+#
+# TODO: Detect and use a real date library where possible...
+
+sub validate_datetime {
+    my ( $line, %r ) = @_;
+    my $error;
+
+    if ( $r{month} < 1 || $r{month} > 12 ) {
+        $error = "Invalid month in '$line'";
+    }
+    elsif ( $r{day} < 1 || $r{day} > days_in_month( $r{year}, $r{month} ) ) {
+        $error = "Invalid day in '$line'";
+    }
+    elsif ( defined $r{hour} && ( $r{hour} < 0 || $r{hour} > 24 ) ) {
+        $error = "Invalid hour in '$line'";
+    }
+    elsif ( defined $r{minute} && ( $r{minute} < 0 || $r{minute} > 60 ) ) {
+        $error = "Invalid minute in '$line'";
+    }
+    elsif ( defined $r{second} && ( $r{second} < 0 || $r{second} > 60 ) ) {
+        $error = "Invalid second in '$line'";
+    }
+
+    return $error;
+}
+
+sub datetime2epoch {
+    my ($dt) = @_;
+    my $offset_seconds =
+      ( $dt->{offset_hour}   // 0 ) * 60 * 60 +
+      ( $dt->{offset_minute} // 0 ) * 60;
+    my @args = map { $dt->{$_} // 0 } (qw(second minute hour day month year));
+
+    $args[4] -= 1;    # Damn you 0-based month
+
+    return timegm(@args) - $offset_seconds;
+}
+
+sub epoch2datetime {
+    my ( $epoch, $offset_hour, $offset_minute ) = @_;
+    $offset_hour   //= 0;
+    $offset_minute //= 0;
+    my $offset_seconds = $offset_hour * 60 * 60 + $offset_minute * 60;
+    my (@epoch_parts) = gmtime( $epoch + $offset_seconds );
+    my $dt = { offset_hour => $offset_hour, offset_minute => $offset_minute };
+
+    foreach my $dt_part (qw(second minute hour day month year)) {
+        $dt->{$dt_part} = shift(@epoch_parts);
+    }
+    $dt->{year} += 1900;
+
+    return $dt;
+}
+
+sub epoch2string {
+    my ($epoch) = @_;
+    my @gmparts = gmtime($epoch);
+
+    $gmparts[4] += 1;      # Damn you 0-based month
+    $gmparts[5] += 1900;
+
+    return
+      sprintf( "%04d-%02d-%02dT%02d:%02d:%02dZ",
+        reverse( @gmparts[ 0 .. 5 ] ) );
+}
+
+sub diff_year {
+    my ( $a, $b ) = @_;
+    my $delta = diff_second( $a, $b );
+    my $years = $b->{year} - $a->{year};
+    my $a_secs =
+      ( $a->{hour}   // 0 ) * 60 * 60 +
+      ( $a->{minute} // 0 ) * 60 +
+      ( $a->{second} // 0 );
+    my $b_secs =
+      ( $b->{hour}   // 0 ) * 60 * 60 +
+      ( $b->{minute} // 0 ) * 60 +
+      ( $b->{second} // 0 );
+    my $secs_per_day = 60 * 60 * 24;
+
+    # 2015-01-01, 2014-12-01
+    # 2015-12-01, 2014-01-01
+    if ( $delta >= 0 || ( $a->{month} <= $b->{month} ) ) {
+        $years += ( $b->{month} - $a->{month} ) / 12;
+    }
+    else {
+        $years += ( 12 - $b->{month} - $a->{month} ) / 12;
+    }
+
+    if ( $delta >= 0 || ( $a->{day} <= $b->{day} ) ) {
+        $years +=
+          ( ( $b->{day} / days_in_month( $b->{year}, $b->{month} ) ) -
+              ( $a->{day} / days_in_month( $a->{year}, $a->{month} ) ) ) / 12;
+    }
+    else {
+        $years +=
+          ( 1 - ( $b->{day} / days_in_month( $b->{year}, $b->{month} ) ) -
+              ( $a->{day} / days_in_month( $a->{year}, $a->{month} ) ) ) / 12;
+    }
+
+    if ( $delta >= 0 || ( $a_secs <= $b_secs ) ) {
+        $years += (
+            (
+                $b_secs / $secs_per_day /
+                  days_in_month( $b->{year}, $b->{month} )
+            ) - (
+                $a_secs / $secs_per_day /
+                  days_in_month( $a->{year}, $a->{month} )
+            )
+        ) / 12;
+    }
+    else {
+        $years += (
+            1 - (
+                $b_secs / $secs_per_day /
+                  days_in_month( $b->{year}, $b->{month} )
+              ) - (
+                $a_secs / $secs_per_day /
+                  days_in_month( $a->{year}, $a->{month} )
+              )
+        ) / 12;
+    }
+
+    return $years;
+}
+
+# return a float where the fraction represents how far into the month the rest
+# of the time information represents (day of month, hours, minutes, seconds).
+sub gmtime2month_float {
+    my (%gm) = @_;
+    my $days =
+      $gm{day} +
+      ( ( $gm{hour} * 60 * 60 + $gm{minute} * 60 + $gm{second} ) / 60 / 60 /
+          24 );
+
+    # days - 1: the first day isn't the whole day (and we don't want to
+    # increment a whole month on the last day of the month)
+    return $gm{month} +
+      ( ( $days - 1 ) / days_in_month( $gm{year}, $gm{month} ) );
+}
+
+sub diff_month {
+    my ( $a, $b ) = @_;
+    my $delta = diff_second( $a, $b );
+    my $delta_years = int( diff_year( $a, $b ) );
+    my (@gmparts)   = (qw(second minute hour day month year));
+    my (@a_gmtime)  = gmtime( datetime2epoch($a) );
+    my (@b_gmtime)  = gmtime( datetime2epoch($b) );
+    my %a_gm = map { $_ => shift(@a_gmtime) } @gmparts;
+    my %b_gm = map { $_ => shift(@b_gmtime) } @gmparts;
+    my $months = 0;
+
+    $a_gm{year}  += 1900;
+    $a_gm{month} += 1;
+    $b_gm{year}  += 1900;
+    $b_gm{month} += 1;
+    $a_gm{month_f} = gmtime2month_float(%a_gm);
+    $b_gm{month_f} = gmtime2month_float(%b_gm);
+    if ( $a_gm{year} == $b_gm{year} ) {
+        $months = $b_gm{month_f} - $a_gm{month_f};
+    }
+    else {
+        $months = $delta_years * 12;
+        if ( $delta > 0 ) {
+            $months +=
+              $b_gm{month_f} >= $a_gm{month_f}
+              ? ( $b_gm{month_f} - $a_gm{month_f} )
+              : ( 12 - $a_gm{month_f} + $b_gm{month_f} );
+        }
+        else {
+            $months -=
+              $b_gm{month_f} >= $a_gm{month_f}
+              ? ( 12 - $b_gm{month_f} + $a_gm{month_f} )
+              : ( $a_gm{month_f} - $b_gm{month_f} );
+        }
+    }
+
+    return ($months);
+}
+
+sub diff_day {
+    my ( $a, $b ) = @_;
+    my $delta = datetime2epoch($b) - datetime2epoch($a);
+
+    return ( $delta / 60 / 60 / 24 );
+}
+
+sub diff_hour {
+    my ( $a, $b ) = @_;
+    my $delta = datetime2epoch($b) - datetime2epoch($a);
+
+    return ( $delta / 60 / 60 );
+}
+
+sub diff_minute {
+    my ( $a, $b ) = @_;
+    my $delta = datetime2epoch($b) - datetime2epoch($a);
+
+    return ( $delta / 60 );
+}
+
+sub diff_second {
+    my ( $a, $b ) = @_;
+    my $delta = datetime2epoch($b) - datetime2epoch($a);
+
+    return $delta;
+}
+
+my %diff_datetimes_dispatch = (
+    'year'   => \&diff_year,
+    'month'  => \&diff_month,
+    'day'    => \&diff_day,
+    'hour'   => \&diff_hour,
+    'minute' => \&diff_minute,
+    'second' => \&diff_second,
+);
+
+sub diff_datetimes {
+    my ( $a, $b, $part ) = @_;
+
+    return $diff_datetimes_dispatch{$part}->( $a, $b );
+}
+
+# Mark lines which need to be kept.
+sub mark_lines {
+    my ($parsed) = @_;
+    my @sorted = ( sort { $b <=> $a } keys %{$parsed} );
+    my $top = $parsed->{ $sorted[0] };
+
+    foreach my $part (qw(hour day month year)) {
+        my $num_retain = $retain{ $part . 'lies' };
+        my $num        = 0;
+        my $i          = 0;
+        my $last;
+
+        log_debug("Need to keep $num_retain ${part}lies");
+        while ( $num < $num_retain && $i < scalar(@sorted) ) {
+            my $current = $parsed->{ $sorted[$i] };
+            my $next =
+                $i + 1 < scalar(@sorted)
+              ? $parsed->{ $sorted[ $i + 1 ] }
+              : $parsed->{ $sorted[$i] };
+
+            if ( defined $last ) {
+                my $current_diff_last =
+                  diff_datetimes( $current->{datetime}, $last->{datetime},
+                    $part );
+                my $next_diff_last =
+                  diff_datetimes( $next->{datetime}, $last->{datetime}, $part );
+
+                # We mark a date for keeping if the next date is further away
+                # from the milestone than the current date (relative to last)
+                if (
+                    abs( 1 - $current_diff_last ) <= abs( 1 - $next_diff_last )
+                    && int(
+                        diff_datetimes(
+                            $current->{datetime}, $top->{datetime}, $part
+                        )
+                    ) < $num_retain
+                  )
+                {
+                    log_debug(
+"Keeping $current->{line} (from $last->{line}) for '$part'"
+                    );
+                    $current->{keep} = 1;
+                    $last = $current;
+                    $num += 1;
+                }
+                else {
+                    log_debug(
+"NOT keeping $current->{line} (from $last->{line}) for '$part'"
+                    );
+                }
+            }
+            else {
+                $last = $current;
+                $current->{keep} = 1;
+            }
+            $i += 1;
+        }
+    }
+
+    return;
+}
+
+sub process {
+    my (@input) = @_;
+    my $parsed = parse_lines(@input);
+    my @sorted = ( sort { $a <=> $b } keys %{$parsed} );
+    my $fn =
+      $opts{invert}
+      ? sub { $parsed->{$_}{keep} }
+      : sub { !$parsed->{$_}{keep} };
+
+    mark_lines($parsed);
+
+    return map { $fn->($_) ? $parsed->{$_}{line} : () } @sorted;
+}
+
+init();
+if ( $opts{run_tests} ) {
+    %retain = (
+        hourlies  => 3,
+        daylies   => 7,
+        monthlies => 6,
+        yearlies  => 10
+    );
+    $opts{invert} = 1;
+    App::Snazzer::Prune::Tests::run();
+}
+elsif ( $opts{gen_examples} ) {
+    my $epoch = time();
+    print join(
+        "\n",
+        App::Snazzer::Prune::Tests::gen_example_lines(
+            $epoch - 10 * 366 * 24 * 60 * 60, $epoch
+        )
+    );
+}
+else {
+    my @input;
+    my @output;
+
+    while (<>) {
+        push( @input, $_ );
+    }
+    @output = process(@input);
+    
+    print join( "\n", @output );
+    if (scalar(@output)) {
+        print "\n";
+    }
+}
+
+################################################################################
+## testing testing one-two-three
+
+{
+
+    package App::Snazzer::Prune::Tests;
+    use strict;
+    use warnings;
+    use Test::More;
+    use Time::Local(qw(timegm));
+    use File::Temp(qw(tempfile));
+
+    BEGIN {
+        App::Snazzer::Prune->import(
+            qw(datetime2string datetime2epoch epoch2string),
+            qw(parse_line days_in_month diff_datetimes process)
+        );
+    }
+
+    sub gen_parse_test_data {
+        my $_2015_12_31 = {
+            year  => '2015',
+            month => '12',
+            day   => '31',
+        };
+        my $_2015_12_31T23Z = {
+            %{$_2015_12_31},
+            zulu => 'Z',
+            hour => '23',
+        };
+        my $_2015_12_31T2359Z = { %{$_2015_12_31T23Z}, minute => '59', };
+        my $_2015_12_31T23p11 = {
+            %{$_2015_12_31},
+            hour        => '23',
+            offset_sign => '+',
+            offset_hour => '11',
+        };
+        my $_2015_12_31T2359p11 = { %{$_2015_12_31T23p11}, minute => '59', };
+        my %_parse_tests = (
+            '2015-12-31'         => $_2015_12_31,
+            '20151231'           => $_2015_12_31,
+            '2015-12-31T23Z'     => $_2015_12_31T23Z,
+            '20151231T23Z'       => $_2015_12_31T23Z,
+            '2015-12-31T2359Z'   => $_2015_12_31T2359Z,
+            '20151231T2359Z'     => $_2015_12_31T2359Z,
+            '2015-12-31T235959Z' => { %{$_2015_12_31T2359Z}, second => '59' },
+            '20151231T235959Z'   => { %{$_2015_12_31T2359Z}, second => '59' },
+            '2015-12-31T23+11'   => $_2015_12_31T23p11,
+            '20151231T2359+11'   => $_2015_12_31T2359p11,
+            '2015-12-31T235959-11' =>
+              { %{$_2015_12_31T2359p11}, offset_sign => '-', second => '59' },
+            '20151231T2359-1159' => {
+                %{$_2015_12_31T2359p11},
+                offset_sign   => '-',
+                offset_minute => '59'
+            },
+        );
+
+        return %_parse_tests;
+    }
+
+    sub test_datetime2string {
+        plan tests => 12;
+        my %_parse_tests             = gen_parse_test_data();
+        my %_parse_tests_stringified = (
+            '2015-12-31'           => '2015-12-31T000000+0000',
+            '20151231'             => '2015-12-31T000000+0000',
+            '2015-12-31T23Z'       => '2015-12-31T230000+0000',
+            '20151231T23Z'         => '2015-12-31T230000+0000',
+            '2015-12-31T2359Z'     => '2015-12-31T235900+0000',
+            '20151231T2359Z'       => '2015-12-31T235900+0000',
+            '2015-12-31T235959Z'   => '2015-12-31T235959+0000',
+            '20151231T235959Z'     => '2015-12-31T235959+0000',
+            '2015-12-31T23+11'     => '2015-12-31T230000+1100',
+            '20151231T2359+11'     => '2015-12-31T235900+1100',
+            '2015-12-31T235959-11' => '2015-12-31T235959-1100',
+            '20151231T2359-1159'   => '2015-12-31T235900-1159',
+        );
+
+        foreach my $test ( sort keys %_parse_tests ) {
+            my $datetime = $_parse_tests{$test};
+            my $result = datetime2string( $test, %{$datetime} );
+
+            is( $result, $_parse_tests_stringified{$test},
+                "datetime2string('$test')" );
+        }
+
+        return done_testing;
+    }
+
+    sub test_parse_line {
+        plan tests => 83;
+        my %_parse_tests = gen_parse_test_data();
+        foreach my $test ( sort keys %_parse_tests ) {
+            my $expected = $_parse_tests{$test};
+            my %result   = parse_line($test);
+
+            is(
+                join( ', ', sort keys %{$expected} ),
+                join( ', ', sort keys %result ),
+                "parse_line('$test')"
+            );
+            foreach my $part ( sort keys %{$expected} ) {
+                is( $expected->{$part}, $result{$part},
+                    "parse_line('$test')\t$part" );
+            }
+        }
+
+        return done_testing;
+    }
+
+    sub test_days_in_month {
+        plan tests => 27;
+        foreach my $month ( 1, 3, 5, 7, 8, 10, 12 ) {
+            is( days_in_month( 2000, $month ),
+                31, "days_in_month(2000, $month) -> 31" );
+        }
+        foreach my $month ( 4, 6, 9, 11 ) {
+            is( days_in_month( 2000, $month ),
+                30, "days_in_month(2000, $month) -> 30" );
+        }
+        foreach my $year ( 2000, 2008, 2012, 2016, 2020, 2024, 2028, 2400 ) {
+            is( days_in_month( $year, 2 ),
+                29, "days_in_month($year, 02) -> 29" );
+        }
+        foreach my $year ( 1800, 1900, 2100, 2200, 2300, 2500, 2001, 2009 ) {
+            is( days_in_month( $year, 2 ),
+                28, "days_in_month($year, 02) -> 28" );
+        }
+
+        return;
+    }
+
+    sub test_diff_datetimes {
+        plan tests => 108;
+        my @tests = (
+            {
+                a      => '2015-12-31',
+                b      => '2015-12-31',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => 0
+            },
+            {
+                a      => '2015-12-30',
+                b      => '2015-12-31',
+                year   => 0,
+                month  => 0,
+                day    => 1,
+                hour   => 24,
+                minute => 24 * 60,
+                second => 24 * 60 * 60
+            },
+            {
+                a      => '2013-12-31',
+                b      => '2015-12-30',
+                year   => 1,
+                month  => 23,
+                day    => 729,
+                hour   => 729 * 24,
+                minute => 729 * 24 * 60,
+                second => 729 * 24 * 60 * 60,
+            },
+            {
+                a      => '2013-12-31',
+                b      => '2015-12-31',
+                year   => 2,
+                month  => 24,
+                day    => 730,
+                hour   => 730 * 24,
+                minute => 730 * 24 * 60,
+                second => 730 * 24 * 60 * 60,
+            },
+            {
+                a      => '2013-12-31',
+                b      => '2016-01-31',
+                year   => 2,
+                month  => 25,
+                day    => 761,
+                hour   => 761 * 24,
+                minute => 761 * 24 * 60,
+                second => 761 * 24 * 60 * 60,
+            },
+            {
+                a      => '2015-12-31',
+                b      => '2015-12-30',
+                year   => 0,
+                month  => 0,
+                day    => -1,
+                hour   => -24,
+                minute => -24 * 60,
+                second => -24 * 60 * 60
+            },
+            {
+                a      => '2016-01-01',
+                b      => '2015-12-31',
+                year   => 0,
+                month  => 0,
+                day    => -1,
+                hour   => -24,
+                minute => -24 * 60,
+                second => -24 * 60 * 60
+            },
+            {
+                a      => '2015-11-30',
+                b      => '2015-12-01',
+                year   => 0,
+                month  => 0,
+                day    => 1,
+                hour   => 24,
+                minute => 24 * 60,
+                second => 24 * 60 * 60
+            },
+            {
+                a      => '2015-12-31T23Z',
+                b      => '2015-12-31T23Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => 0
+            },
+            {
+                a      => '2015-12-31T23Z',
+                b      => '2016-01-01T00Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 1,
+                minute => 60,
+                second => 60 * 60,
+            },
+            {
+                a      => '2016-01-01T00Z',
+                b      => '2015-12-31T23Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => -1,
+                minute => -60,
+                second => -60 * 60,
+            },
+            {
+                a      => '2015-12-31T23:59Z',
+                b      => '2015-12-31T23:59Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => 0,
+            },
+            {
+                a      => '2015-12-31T23:59Z',
+                b      => '2016-01-01T00:00Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 1,
+                second => 60,
+            },
+            {
+                a      => '2016-01-01T00:00Z',
+                b      => '2015-12-31T23:59Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => -1,
+                second => -60,
+            },
+            {
+                a      => '2015-12-31T23:59:59Z',
+                b      => '2015-12-31T23:59:59Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => 0,
+            },
+            {
+                a      => '2015-12-31T23:59:59Z',
+                b      => '2016-01-01T00:00:00Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => 1,
+            },
+            {
+                a      => '2016-01-01T00:00:00Z',
+                b      => '2015-12-31T23:59:59Z',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 0,
+                minute => 0,
+                second => -1,
+            },
+            {
+                a      => '2016-01-01T00:00:00+04:00',
+                b      => '2016-01-01T02:00:00+05:00',
+                year   => 0,
+                month  => 0,
+                day    => 0,
+                hour   => 1,
+                minute => 1 * 60,
+                second => 1 * 60 * 60,
+            },
+        );
+
+        foreach my $test (@tests) {
+            my (%a) = parse_line( $test->{a} );
+            my (%b) = parse_line( $test->{b} );
+
+            foreach my $part (qw(year month day hour minute second)) {
+                if ( defined $test->{$part} ) {
+                    is(
+                        int( diff_datetimes( \%a, \%b, $part ) ),
+                        $test->{$part},
+"diff_datetimes($test->{a}, $test->{b}, $part)=$test->{$part}"
+                    );
+                }
+            }
+        }
+
+        return done_testing;
+    }
+
+    sub gen_example_lines {
+        my ( $epoch, $epoch_end ) = @_;
+        my %schedule = (
+            ( $epoch_end + 1 )                 => 0,
+            ( $epoch_end - 60 * 5 )            => 1,
+            ( $epoch_end - 60 * 60 * 1 )       => 60,
+            ( $epoch_end - 60 * 60 * 24 * 2 )  => 60 * 60,
+            ( $epoch_end - 60 * 60 * 24 * 30 ) => 60 * 60 * 24,
+        );
+        my @lines;
+        my $increment = 60 * 60 * 24;
+
+        foreach my $milestone ( sort keys %schedule ) {
+            while ( $epoch < $milestone && $increment ) {
+                push( @lines, epoch2string($epoch) );
+                $epoch += $increment;
+            }
+            $increment = $schedule{$milestone};
+        }
+
+        return @lines;
+    }
+
+    sub _test_process_dataset {
+        my ( $input, $expected_out, $name ) = @_;
+        my @actual_out     = process( @{$input} );
+        my @expected_set   = @{$expected_out};
+        my $actual_fh      = File::Temp->new( SUFFIX => '.actual' );
+        my $actual_fname   = $actual_fh->filename;
+        my $expected_fh    = File::Temp->new( SUFFIX => '.expected' );
+        my $expected_fname = $expected_fh->filename;
+
+        foreach my $actual (@actual_out) {
+            my $expected = shift(@expected_set);
+            is( $actual, $expected, "$name $actual" );
+            print $actual_fh "$actual\n";
+            print $expected_fh "$expected\n";
+        }
+        system("diff -Naur '$expected_fname' '$actual_fname'");
+
+        return;
+    }
+
+    sub _test_process_dataset_count {
+        my ( $input, $expected_count, $name ) = @_;
+        my @actual_out = process( @{$input} );
+
+        is( scalar(@actual_out), $expected_count,
+            "$name -> $expected_count lines" );
+
+        return;
+    }
+
+    sub modify_test_process_data {
+        my ( $modify, @lines ) = @_;
+        my $state = ref($modify) ? {} : 0;
+        my @output;
+
+        foreach my $line (@lines) {
+            my %dt    = parse_line($line);
+            my $epoch = datetime2epoch( \%dt );
+
+            if ( ref($modify) ) {
+                $epoch = $modify->( $state, $epoch );
+            }
+            else {
+                $epoch += $state;
+                $state += $modify;
+            }
+            push( @output, epoch2string($epoch) );
+        }
+
+        return @output;
+    }
+
+    sub test_process {
+        plan tests => 116;
+        my @expected_out = (
+            qw(
+              2000-03-01T00:00:00Z
+              2001-03-01T00:00:00Z
+              2002-03-01T00:00:00Z
+              2003-03-01T00:00:00Z
+              2004-03-01T00:00:00Z
+              2005-03-01T00:00:00Z
+              2006-03-01T00:00:00Z
+              2007-03-01T00:00:00Z
+              2008-03-01T00:00:00Z
+              2008-10-01T00:00:00Z
+              2008-11-01T00:00:00Z
+              2008-12-01T00:00:00Z
+              2009-01-01T00:00:00Z
+              2009-02-01T00:00:00Z
+              2009-02-23T00:00:00Z
+              2009-02-24T00:00:00Z
+              2009-02-25T00:00:00Z
+              2009-02-26T00:00:00Z
+              2009-02-27T00:00:00Z
+              2009-02-28T00:00:00Z
+              2009-02-28T22:00:00Z
+              2009-02-28T23:00:00Z
+              2009-03-01T00:00:00Z)
+        );
+        my @test_set = gen_example_lines( timegm( 0, 0, 0, 1, 2, 1999 ),
+            timegm( 0, 0, 0, 1, 2, 2009 ) );
+
+        _test_process_dataset( \@test_set, \@expected_out, "aligned dates" );
+        _test_process_dataset( \@expected_out, \@expected_out,
+            "aligned dates round-trip" );
+        @test_set = modify_test_process_data( 60 * 10, @expected_out );
+        _test_process_dataset( \@test_set, \@test_set,
+            "misaligned dates cumulative -10min round-trip" );
+        @test_set = modify_test_process_data( 0 - 60 * 10, @expected_out );
+        _test_process_dataset( \@test_set, \@test_set,
+            "misaligned dates cumulative +10min round-trip" );
+        @test_set = modify_test_process_data( 60 * 60 * 4, @expected_out );
+        _test_process_dataset_count( \@test_set, 20,
+            "misaligned dates cumulative -4hrs round-trip" );
+        @test_set = modify_test_process_data( 0 - 60 * 60 * 4, @expected_out );
+        _test_process_dataset( \@test_set, \@test_set,
+            "misaligned dates cumulative +4hrs round-trip" );
+        @test_set =
+          modify_test_process_data( 60 * 60 * 24 * 1.5, @expected_out );
+        _test_process_dataset_count( \@test_set, 18,
+            "misaligned dates cumulative -1.5days round-trip" );
+        @test_set =
+          modify_test_process_data( 0 - 60 * 60 * 24 * 1.5, @expected_out );
+        _test_process_dataset_count( \@test_set, 20,
+            "misaligned dates cumulative +1.5days round-trip" );
+
+        return done_testing;
+    }
+
+    sub run {
+        plan tests                => 5;
+        subtest "parse_line"      => \&test_parse_line;
+        subtest "datetime2string" => \&test_datetime2string;
+        subtest "days_in_month"   => \&test_days_in_month;
+        subtest "diff_datetimes"  => \&test_diff_datetimes;
+        subtest "process"         => \&test_process;
+
+        return done_testing;
+    }
+}
+
+__END__
+=head1 NAME
+
+snazzer-prune-candidates - reduce a set of lines containing datetimes to only
+those which are no longer needed to meet retention preferences
+
+=head1 SYNOPSIS
+
+ find /some/.snapshotz -maxdepth 1 -mindepth 1 -type d | \
+   snazzer-prune-candidates | xargs btrfs subvolume delete
+
+ echo -e "2015-02-01T000000Z\n2015-02-01T000010Z" | snazzer-prune-candidates
+
+ snazzer-prune-candidates --gen-example-input  | \
+   ./snazzer-prune-candidates --invert
+
+=head1 OPTIONS
+
+=over 1
+
+=item B<--yearlies>=N or B<SNAZZER_YEARLIES_TO_KEEP>=N
+
+Keep one date per year for the last N years. Default: 1000
+
+=item B<--monthlies>=N or B<SNAZZER_MONTHLIES_TO_KEEP>=N
+
+Keep one date per month for the last N months. Default: 12
+
+=item B<--daylies>=N or B<SNAZZER_DAYLIES_TO_KEEP>=N
+
+Keep one date per day for the last N days. Default: 32
+
+=item B<--hourlies>=N or B<SNAZZER_HOURLIES_TO_KEEP>=N
+
+Keep one date per hour for the last N hours. Default: 24
+
+=item B<--invert>
+
+Invert output to contain only those lines which should be retained
+
+=item B<--gen-example-input>
+
+Generate example datetime strings suitable for testing
+
+=item B<--verbose>
+
+Verbose debugging output to STDERR
+
+=item B<--help>
+
+Brief help message
+
+=item B<--man>
+
+Full documentation
+
+=item B<--tests>
+
+Run tests (for developers/maintainers)
+
+=back
+
+=head1 DESCRIPTION
+
+B<snazzer-prune-candidates> reads lines of input from STDIN which are expected
+to end in datetimes which are a subset of valid ISO 8601 strings:
+
+    YYYY-MM-DD
+    YYYY-MM-DDTHHMMSSZ
+    YYYY-MM-DDTHHMMSS+HH
+    YYYY-MM-DDTHHMMSS-HHMM
+
+The parsing is a dumb regex to avoid library dependencies. It is lax about what,
+if anything separates date or time parts - so for example, the following are
+also valid (and demonstrate that only the end of these lines are parsed - but
+note that if a line is considered unnecessary, it will be printed unchanged in
+full to STDOUT):
+
+    /any/old/junk/YYYYMMDD
+    /any/old/junk/YYYY_MM_DDTHH:MM:SSZ
+    /any/old/junk/YYYY-MM-DDTHH_MM_SS+HH:MM
+
+Lines which aren't required to meet retention preferences are printed to STDOUT.
+
+B<NOTE:> Command-line options override environment variables.
+
+B<NOTE:> the description in L<OPTIONS> mentions "last N <years/months/etc>".
+This refers to the period of time looking back from the most recent date seen at
+the input. B<snazzer-prune-candidates> does not use the local system time for
+any decision-making part of the program.
+
+=head1 EXIT STATUS
+
+B<snazzer-prune-candidates> will abort with an error message printed to STDOUT
+and non-zero exit status under the following conditions:
+
+=over 1
+
+=item 1 - A retention preference value contains anything other than digits
+
+=item 2 - Line does not end in a valid datetime string pattern
+
+=item 3 - Datetime contains obviously non-sensical digits
+
+=back
+
+=head1 BUGS AND LIMITATIONS
+
+Due to a desire to avoid any non-core library dependencies there may be bugs
+with all the fun things that happen with home-brew time handling code: daylight
+savings, leap-years/hours/minutes/seconds and treatment of mixed timezones.
+
+A future version should try to use an appropriate datetime library to completely
+offload normalization, differencing and comparison of datetimes when available.
+
+=head1 SEE ALSO
+
+snazzer, snazzer-measure, snazzer-receive
+
+=head1 AUTHOR
+
+Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+=cut

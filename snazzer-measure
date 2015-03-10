@@ -1,0 +1,388 @@
+#!/bin/sh
+
+set -e
+if [ "$SNAZZER_USE_UTC" = "1" ]; then
+    DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
+else
+    DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+fi
+
+# Keep in sync with the POD!
+DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor --detach-sign -"
+# Keep in sync with the POD!
+DEFAULT_MEAS_FILE=".snapshot_measurements"
+
+if [ -z "$SNAZZER_MEASUREMENTS_FILE" ]; then
+    SNAZZER_MEASUREMENTS_FILE="$DEFAULT_MEAS_FILE"
+fi
+
+host_datetime() {
+    echo "> on $(hostname) at $DATE, $1="
+}
+
+build_exclude_switch() {
+    DIR="$1"
+    EXCL_FILE="$DIR/${SNAZZER_MEASUREMENTS_FILE}.exclude"
+    if [ -f "$EXCL_FILE" ]; then
+        if [ "$(grep "^$SNAZZER_MEASUREMENTS_FILE$" "$EXCL_FILE" | wc -l)" \
+            = "0" ]; then
+            echo "ERROR: Expected $EXCL_FILE to contain" >&2
+            printf "\t%s unable to continue" "$SNAZZER_MEASUREMENTS_FILE" >&2
+            exit 4
+        fi
+        echo "--exclude-from=\"$EXCL_FILE\""
+    else
+        echo "--exclude=\"$SNAZZER_MEASUREMENTS_FILE\""
+    fi
+}
+
+build_grep_exclude_switch() {
+    DIR="$1"
+    EXCL_FILE="$DIR/${SNAZZER_MEASUREMENTS_FILE}.exclude"
+    if [ -f "$EXCL_FILE" ]; then
+        echo "-v -f \"$EXCL_FILE\""
+    else
+        echo "-v \"$SNAZZER_MEASUREMENTS_FILE\""
+    fi
+}
+
+build_tar_cmd() {
+    EXCL=$(build_exclude_switch "$1")
+    echo "find '$1' -xdev -print0 | LC_ALL=C sort -z | tar --null -T -\
+ --no-recursion --preserve-permissions --one-file-system -c\
+ --warning=file-ignored --to-stdout $EXCL"
+}
+
+measure_sha512sum() {
+    TAR_CMD=$(build_tar_cmd "$1")
+
+    host_datetime "sha512sum"
+    sha512sum -b
+    echo "  Reproduce with:"
+    echo "  $TAR_CMD | sha512sum -b"
+    echo ""
+}
+
+build_du_cmd() {
+    EXCL=$(build_exclude_switch "$1")
+    echo "du -bs --one-file-system $EXCL '$1'"
+}
+
+build_find_excl_switch() {
+    DIR="$1"
+    EXCL_FILE="$DIR/${SNAZZER_MEASUREMENTS_FILE}.exclude"
+
+    eval "cat '$EXCL_FILE'" | sed "s/'/'\\\\''/g" | while read RULE
+    do
+        echo -n " -path '*$RULE' -prune -o"
+    done
+}
+
+build_find_cmd() {
+    #EXCL=$(build_grep_exclude_switch "$1")
+    EXCL=$(build_find_excl_switch "$1")
+    cat <<HERE
+find '$1' -xdev -path '/tmp' -prune -o $EXCL -type f -printf "%T@ '%p'\\\n" |\
+ sort -n | tail -1 | cut -f2- -d" " |\
+ xargs ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
+HERE
+}
+
+measure_latest() {
+    FIND_CMD=$(build_find_cmd "$1")
+    host_datetime "find latest"
+    echo "FIND_CMD: $FIND_CMD" >&2
+    eval "$FIND_CMD"
+    echo "  Reproduce with:"
+    echo "  $FIND_CMD"
+    echo ""
+}
+
+measure_du() {
+    DU_CMD=$(build_du_cmd "$1")
+    host_datetime "du bytes"
+    eval "$DU_CMD"
+    echo "  Reproduce with:"
+    echo "  $DU_CMD"
+    echo ""
+}
+
+measure_tar_info() {
+    host_datetime "tar info"
+    TAR_VERSION=$(tar --version | head -n 1)
+    TAR_DEFAULTS=$(tar --show-defaults)
+    echo "$TAR_VERSION $TAR_DEFAULTS"
+}
+
+build_sig_cmd() {
+    if [ -z "$SNAZZER_SIG_CMD" ]; then
+        echo "$DEFAULT_SIG_CMD"
+    else
+        echo "$SNAZZER_SIG_CMD"
+    fi
+}
+
+measure_gpg() {
+    SIG_CMD=""
+
+    if [ -z "$SNAZZER_SIG_CMD" ]; then
+        SIG_CMD="$DEFAULT_SIG_CMD"
+    else
+        SIG_CMD="$SNAZZER_SIG_CMD"
+    fi
+    HOST_DATETIME=$(host_datetime "gpg")
+    TAR_CMD=$(build_tar_cmd "$1")
+    echo "$HOST_DATETIME"
+    eval "$SIG_CMD"
+    cat <<HERE
+  Verify with:
+  SIG=\$(mktemp) && cat "$SNAZZER_MEASUREMENTS_FILE" | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > "\$SIG" && $TAR_CMD | gpg2 --verify "\$SIG" -
+
+HERE
+}
+
+assert_gpg_secring_excluded() {
+    if [ "$(gpg2 --list-secret-keys | wc -l)" = "0" ]; then
+        echo "ERROR: no gpg2 --list-secret-keys" >&2
+        exit 10
+    fi
+    N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
+        xargs -I {} sh -c \
+        "(df -P -T {} | tail -n +2 | sed -n 's|[^ ]*  *\([^ ]*\).*|\1|p') | \
+            grep btrfs | wc -l")
+    #N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
+    #    grep -v -f /etc/snazzer/exclude.patterns | wc -l)
+    GPG_SECRING=$(gpg2 --list-secret-keys | head -n 1)
+
+    if [ "$N" -ne 0 ] && ( [ -z "$MY_KEYFILES_ARE_INVINCIBLE" ] || \
+        [ "$MY_KEYFILES_ARE_INVINCIBLE" -ne "1" ]); then
+        show_usage "\
+$N gpg secret key(s) are included in the default snazzer shapshots, including
+(perhaps?) $GPG_SECRING!
+
+Move the private keyfiles you wish to use for measurement signing to a subvolume
+excluded in /etc/snazzer/exclude.patterns, and ensure that the gpg environment
+and config is set correctly. Stubbornly refusing to shoot self in foot; if you
+feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
+        exit 3
+    fi
+}
+
+# tar invocation inspired by
+# https://wiki.debian.org/ReproducibleBuilds/FileOrderInTarballs
+measure() {
+    MEAS_DIR="$1"
+    echo "#########################################"
+    measure_du "$MEAS_DIR"
+    #measure_latest "$MEAS_DIR"
+    # Sometimes, it's mildly faster to run sha512sum and gpg signing in parallel
+    # especially on I/O starved VMs.
+    if [ "$SNAZZER_SIG_CMD" != " " ]; then
+        assert_gpg_secring_excluded
+        # Put the fifo somewhere it can't be listed by anyone except us, and
+        # especially set permissions so that it can only be read by us.
+        TMP_DIR=$(mktemp -d)
+        chmod 0700 "$TMP_DIR"
+        TMP_FIFO=$(mktemp --tmpdir="$TMP_DIR" -u)
+        mkfifo --mode=0700 "$TMP_FIFO"
+        SHA512_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
+        GPG_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
+        eval "$(build_tar_cmd "$MEAS_DIR")" | tee "$TMP_FIFO" | \
+            measure_sha512sum "$MEAS_DIR" > "$SHA512_MEASUREMENT" &
+        sleep 1 # SMELLLLLL... avoid stupid race condition where it seems that
+                # measure_gpg starts before tee does
+        measure_gpg "$MEAS_DIR" < "$TMP_FIFO" > "$GPG_MEASUREMENT"
+        # And if we put their respective output straight to stdout, we sometimes
+        # get their output intermixedue
+        cat "$SHA512_MEASUREMENT"
+        cat "$GPG_MEASUREMENT"
+        rm "$GPG_MEASUREMENT"
+        rm "$SHA512_MEASUREMENT"
+        rm "$TMP_FIFO"
+        rmdir "$TMP_DIR"
+    else
+        eval "$(build_tar_cmd "$MEAS_DIR")" | measure_sha512sum "$MEAS_DIR"
+    fi
+    measure_tar_info
+}
+
+show_usage() {
+    if [ -n "$1" ]; then
+        pod2usage -exit 0 "$0" >&2
+        printf "\nERROR: %s" "$1" >&2
+    else
+        pod2usage -exit 0 "$0"
+    fi
+}
+
+if [ "$1" = "--help" -o "$1" = "-h" ]; then
+    pod2usage -exit 0 "$0"
+elif [ "$1" = "--man" ]; then
+    pod2usage -exit 0 -verbose 3 "$0"
+elif [ -z "$1" ]; then
+    show_usage "No path specified"
+    exit 1
+else
+    if [ ! -d "$1" ]; then
+        echo "ERROR: path '$1' is not a directory" >&2
+        exit 2
+    else
+        OLD_DIR="$(pwd)"
+        cd "$1"
+        measure "."
+        cd "$OLD_DIR"
+    fi
+fi
+
+exit
+__END__
+=head1 NAME
+
+snazzer-measure - report shasums & PGP signatures of content under a given path,
+along with commands to reproduce or verify data is unchanged
+
+=head1 SYNOPSIS
+
+  snazzer-measure /some/path >> .snapshot_measurements
+
+=head1 DESCRIPTION
+
+Creates reproducable fingerprints of the content under a given directory, along
+with the commands necessary to reproduce the measurement using only standard
+core GNU userland utilities.
+
+The output includes:
+
+=over
+
+=item - C<du -bs --time> (bytes used, most recently modified file datetime)
+
+=item - sha512sum of the result of a reproducible tarball of the directory
+
+=item - C<gpg2 --armor --sign> of the same
+
+=item - instructions for reproducing or verifying each of the above
+
+=item - hostname and datetime of B<snazzer-measure> invocation
+
+=item - C<tar --version>, C<tar --show-defaults>
+
+=back
+
+=head1 OPTIONS
+
+=over 1
+
+=item - B<SNAZZER_SIG_CMD> (envar): Command to generate PGP SIGNATURE text.
+Takes input from stdin, output to stdout. Signatures can be disabled with
+C<SNAZZER_SIG_CMD=' '>. Default:
+
+  SNAZZER_SIG_CMD="gpg2 --armor --detach-sign --use-agent --quiet
+    --no-greeting --batch"
+
+=item - B<SNAZZER_MEASUREMENTS_FILE> (envar): A filename within the measured
+directory excluded from measurements (changes to this file do not affect
+results). Default:
+
+  SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
+
+=item - B<MY_KEYFILES_ARE_INVINCIBLE>=1 (envar): skip sanity check/abort when
+gpg secret key exists on a subvolume included in default snazzer snapshots
+
+=item - B<SNAZZER_USE_UTC> (envar): use UTC times of the form
+C<YYYY-MM-DDTHHMMSSZ> instead of the default local time+offset
+C<YYYY-MM-DDTHHMMSS+hhmm>
+
+=item B<--help>
+
+Brief help message
+
+=item B<--man>
+
+Full documentation
+
+=back
+
+=head1 EXIT STATUS
+
+B<snazzer-measure> will abort with an error message printed to STDERR and
+non-zero exit status under the following conditions:
+
+=over 1
+
+=item 1 - Path string not specified
+
+=item 2 - Path string not a directory
+
+=item 3 - GPG signature would have been generated with a secret keyfile stored
+in a subvolume which has not been excluded from default snazzer snapshots, see
+L<***IMPORTANT***> below
+
+=item 4 - Expected the .snazzer_measurements_exclude file to contain an entry
+for the .snazzer_measurements file
+
+=back
+
+=head1 ***IMPORTANT***
+
+Please note that if you are using this tool to gain some form of integrity
+measurement (Eg. you want to detect tampering), GPG private keys used for the
+signing operation mustn't be exposed among the directories being measured.
+
+Put another way: it makes no sense to GPG-sign measurements of a directory if
+those very same directories contain the GPG private key material required to
+re-sign modifications made by anyone who happens to be looking.
+
+=head1 BUGS AND LIMITATIONS
+
+=over
+
+=item B<MY_KEYFILES_ARE_INVINCIBLE>
+
+The sanity check for location of GPG secret keyfile doesn't make sense on
+installations using smartcards, TPMs, passphrase-protected (!) keyfiles etc.
+hence the B<MY_KEYFILES_ARE_INVINCIBLE> work-around.
+
+=item Temporary files
+
+To avoid unnecessary I/O, gpg signing and shasumming are done in parallel from
+the same C<tar --to-stdout> pipe; this involves creating a temporary named pipe
+which is normally removed at the end of a successful run, but will be left
+behind should a failure occur. These are randomly named with C<mktemp> and mode
+0700, inside a C<mktemp -d> directory also with 0700 permissions.
+
+=back
+
+=head1 SEE ALSO
+
+snazzer, snazzer-prune-candidates, snazzer-receive
+
+=head1 AUTHOR
+
+Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+=cut
