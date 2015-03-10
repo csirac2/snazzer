@@ -28,6 +28,10 @@ Generate a test btrfs image and mount it for playing with:
     # measurements to run after they've been received on your backup server
     # rather than burning up CPU and disk I/O on the original host:
     snazzer --measure --all /mnt
+    # Now observe that running measure again, we're smart enough to skip
+    # re-measuring snapshots which have already been measured by this host
+    # (use --force to override this behaviour):
+    snazzer --measure --all /mnt
 
     # Below, commands are example-specific and won't work if copied verbatim:
     # view the .snapshot_measurements report for one of the snapshots:
