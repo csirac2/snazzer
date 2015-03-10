@@ -43,7 +43,7 @@ setup_subvols_exclude() {
 var/cache
 var/lib/docker
 .snapshots
-*secret*
+/etc/*secret*
 HERE
         cat <<HERE >&2
 ERROR: missing '$SNAZZER_SUBVOLS_EXCLUDE_FILE', should contain entries such as:
@@ -460,7 +460,7 @@ snapshots already measured by current hostname
 list of shell glob patterns of subvolume pathnames which should be excluded from
 C<snazzer --all> invocations; compatible with C<--exclude-from> for B<du> and
 B<tar>.  Examples of subvolume patterns to exclude from regular snapshotting:
-*secret*, /var/cache, /var/lib/docker/btrfs, .snapshots.
+/etc/*secret*, /var/cache, /var/lib/docker/btrfs, .snapshots.
 B<NOTE:> C<.snapshotz> is always excluded. Default:
 
   SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
