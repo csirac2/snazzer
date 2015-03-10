@@ -1,8 +1,8 @@
 snazzer
 =======
 
-Creates read-only "/subvol/.snapshotz/[isodate]" btrfs snapshots, offers backup
-system features such as snapshot measurement, transport and pruning.
+btrfs snapshotting and backup system offering snapshot measurement, transport
+and pruning.
 
 Getting started
 ---------------
