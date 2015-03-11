@@ -9,7 +9,7 @@ fi
 
 # Keep in sync with the POD!
 DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-    --detach-sign - >/dev/null"
+    --detach-sign -"
 # Keep in sync with the POD!
 DEFAULT_MEAS_FILE=".snapshot_measurements"
 
