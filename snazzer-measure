@@ -8,7 +8,8 @@ else
 fi
 
 # Keep in sync with the POD!
-DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor --detach-sign -"
+DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
+    --detach-sign - >/dev/null"
 # Keep in sync with the POD!
 DEFAULT_MEAS_FILE=".snapshot_measurements"
 
@@ -277,8 +278,8 @@ The output includes:
 Takes input from stdin, output to stdout. Signatures can be disabled with
 C<SNAZZER_SIG_CMD=' '>. Default:
 
-  SNAZZER_SIG_CMD="gpg2 --armor --detach-sign --use-agent --quiet
-    --no-greeting --batch"
+  DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
+      --detach-sign - >/dev/null"
 
 =item - B<SNAZZER_MEASUREMENTS_FILE> (envar): A filename within the measured
 directory excluded from measurements (changes to this file do not affect

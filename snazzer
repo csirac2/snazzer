@@ -182,7 +182,7 @@ prune() {
     NUM_PRUNE="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | \
         snazzer-prune-candidates | wc -l")"
     NUM_AVAIL="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | wc -l")"
-    echo "$SOURCE: pruning $NUM_PRUNE of $NUM_AVAIL"
+    echo "'$SOURCE': pruning $NUM_PRUNE of $NUM_AVAIL"
     if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
         if [ "$NUM_PRUNE" != "0" ]; then
             PRUNE_ARGS=$(newlines2quoted "$TO_PRUNE")
@@ -218,7 +218,11 @@ HERE
 # to already have made a measurement in the past
 measure() {
     SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
-    SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/\/.snapshotz/')"
+    if [ "$SOURCE" = "/" ]; then
+        SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/.snapshotz/')"
+    else
+        SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/\/.snapshotz/')"
+    fi
     OLD_DIR=$(pwd)
     eval "if [ ! -d '$SHOTZ' ]; then
         echo \"ERROR: '$SHOTZ' does not exist, cannot measure\" >&2;
@@ -227,8 +231,9 @@ measure() {
     eval "cd '$SHOTZ'"
     assert_subvolume "."
     if [ -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
-        echo "ERROR: Another snazzer --measure invocation is already running"
-        echo "\tPID: $(cat "$SNAZZER_MEAS_LOCK_DIR/pid")"
+        echo "ERROR: Another snazzer --measure invocation is already running" >&2
+        echo "\t$SNAZZER_MEAS_LOCK_DIR can be removed if this is not true" >&2
+        echo "\tPID: $(cat "$SNAZZER_MEAS_LOCK_DIR/pid")" >&2
         exit 7
     else
         mkdir "$SNAZZER_MEAS_LOCK_DIR"
@@ -241,7 +246,7 @@ measure() {
     fi
     NUM_MEAS="$( eval "echo -n '$TO_MEAS' |grep . | wc -l")"
     NUM_AVAIL="$( find '.' -maxdepth 1 -mindepth 1 -type d | wc -l)"
-    echo "measuring $NUM_MEAS of $NUM_AVAIL in '$SHOTZ':"
+    echo "'$SHOTZ': measuring $NUM_MEAS of $NUM_AVAIL"
     echo "$TO_MEAS" |grep . |sed "s/'/'\\''/g" | while read SUBVOL
     do
         if [ "$DRY_RUN" = "1" ]; then
