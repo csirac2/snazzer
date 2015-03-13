@@ -18,7 +18,7 @@ if [ -z "$SNAZZER_MEASUREMENTS_FILE" ]; then
 fi
 
 host_datetime() {
-    echo "> on $(hostname) at $DATE, $1="
+    echo "> on $(hostname) at $DATE, $1:"
 }
 
 build_exclude_switch() {
@@ -31,9 +31,9 @@ build_exclude_switch() {
             printf "\t%s unable to continue" "$SNAZZER_MEASUREMENTS_FILE" >&2
             exit 4
         fi
-        echo "--exclude-from=\"$EXCL_FILE\""
+        echo "--exclude-from='$EXCL_FILE'"
     else
-        echo "--exclude=\"$SNAZZER_MEASUREMENTS_FILE\""
+        echo "--exclude='$SNAZZER_MEASUREMENTS_FILE'"
     fi
 }
 
@@ -41,9 +41,9 @@ build_grep_exclude_switch() {
     DIR="$1"
     EXCL_FILE="$DIR/${SNAZZER_MEASUREMENTS_FILE}.exclude"
     if [ -f "$EXCL_FILE" ]; then
-        echo "-v -f \"$EXCL_FILE\""
+        echo "-v -f '$EXCL_FILE'"
     else
-        echo "-v \"$SNAZZER_MEASUREMENTS_FILE\""
+        echo "-v '$SNAZZER_MEASUREMENTS_FILE'"
     fi
 }
 
@@ -58,9 +58,8 @@ measure_sha512sum() {
     TAR_CMD=$(build_tar_cmd "$1")
 
     host_datetime "sha512sum"
+    echo "$TAR_CMD | sha512sum -b"
     sha512sum -b
-    echo "  Reproduce with:"
-    echo "  $TAR_CMD | sha512sum -b"
     echo ""
 }
 
@@ -92,19 +91,16 @@ HERE
 measure_latest() {
     FIND_CMD=$(build_find_cmd "$1")
     host_datetime "find latest"
-    echo "FIND_CMD: $FIND_CMD" >&2
+    echo "$FIND_CMD"
     eval "$FIND_CMD"
-    echo "  Reproduce with:"
-    echo "  $FIND_CMD"
     echo ""
 }
 
 measure_du() {
     DU_CMD=$(build_du_cmd "$1")
     host_datetime "du bytes"
+    echo "$DU_CMD"
     eval "$DU_CMD"
-    echo "  Reproduce with:"
-    echo "  $DU_CMD"
     echo ""
 }
 
@@ -134,12 +130,11 @@ measure_gpg() {
     HOST_DATETIME=$(host_datetime "gpg")
     TAR_CMD=$(build_tar_cmd "$1")
     echo "$HOST_DATETIME"
-    eval "$SIG_CMD"
     cat <<HERE
-  Verify with:
-  SIG=\$(mktemp) && cat "$SNAZZER_MEASUREMENTS_FILE" | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > "\$SIG" && $TAR_CMD | gpg2 --verify "\$SIG" -
-
+SIG=\$(mktemp) && cat $SNAZZER_MEASUREMENTS_FILE | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $TAR_CMD | gpg2 --verify \$SIG -
 HERE
+    eval "$SIG_CMD"
+    echo ""
 }
 
 assert_gpg_secring_excluded() {
@@ -340,9 +335,9 @@ re-sign modifications made by anyone who happens to be looking.
 
 =item B<MY_KEYFILES_ARE_INVINCIBLE>
 
-The sanity check for location of GPG secret keyfile doesn't make sense on
-installations using smartcards, TPMs, passphrase-protected (!) keyfiles etc.
-hence the B<MY_KEYFILES_ARE_INVINCIBLE> work-around.
+The sanity check for location of GPG secret keyfile may be more annoying than
+helpful on installations using smartcards, TPMs, or other methods of protecting
+keyfiles - hence the B<MY_KEYFILES_ARE_INVINCIBLE> work-around.
 
 =item Temporary files
 

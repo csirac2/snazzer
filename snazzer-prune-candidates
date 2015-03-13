@@ -1170,12 +1170,43 @@ and non-zero exit status under the following conditions:
 
 =head1 BUGS AND LIMITATIONS
 
+=over
+
+=item Homebrew datetime code warning
+
 Due to a desire to avoid any non-core library dependencies there may be bugs
 with all the fun things that happen with home-brew time handling code: daylight
 savings, leap-years/hours/minutes/seconds and treatment of mixed timezones.
 
 A future version should try to use an appropriate datetime library to completely
 offload normalization, differencing and comparison of datetimes when available.
+
+=item When some datetimes are very close together: why they mightn't be pruned
+
+B<snazzer-prune-candidates> iterates over each line of the input several times:
+once each to mark datetimes required to be kept to meet hourly, daily, monthly
+and yearly retention preferences. At the end of this process, all unmarked lines
+may safely be dropped and those are emitted for pruning.
+
+However, rather than require exactly 60mins, 24hrs, 28/29/30/31 days etc.
+between snapshots - which would risk dropping some previously retained datetimes
+depending on how far your snapshot runs drift from their usual schedule - the
+algorithm instead marks whichever datetime would most closely satisfy the
+retention requirement relative to the previously marked item.
+
+The end result is that occasionally (for example) a snapshot which has been
+marked as the best choice to meet the monthly requirement isn't quite the same
+snapshot as the one that has already been marked to meet the daily retention
+requirement, although they may be very close together in time. In fact, when
+starting out from very few snapshots to begin with, you may find several
+snapshots very close together are being retained toward the end of your set of
+snapshots due to the coarser retention periods marking out snapshots which are
+only a few minutes/hours older than other marked snapshots simply because they
+are slightly closer to the next retention interval (even if that difference
+seems trivial). If this bothers you, please provide feedback or patches to the
+author.
+
+=back
 
 =head1 SEE ALSO
 

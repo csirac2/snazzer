@@ -55,6 +55,23 @@ HERE
     fi
 }
 
+list_subvolumes_excluded() {
+    FS="$1"
+    assert_mountpoint "$FS"
+    if [ "$FS" = "/" ]; then
+        LIST=$(btrfs subvolume list -o "$FS" | \
+            grep -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            sed -n "s|.*path \(.*\)|$FS\1|p" | sed ':a;N;$!ba;s/\n/ /g')
+    else
+        LIST=$(btrfs subvolume list -o "$FS" | \
+            grep -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            sed -n "s|.*path \(.*\)|$FS/\1|p" | sed ':a;N;$!ba;s/\n/ /g')
+    fi
+    if [ -n "$LIST" ]; then
+        printf "\nExcluded: $LIST\n"
+    fi
+}
+
 list_subvolumes() {
     FS="$1"
     assert_mountpoint "$FS"
@@ -367,6 +384,7 @@ elif [ "$DO_ALL" = "1" ]; then
             do
                 do_multiple "$DO_ACTION" "$SUBVOL"
             done
+            list_subvolumes_excluded "$MOUNTPOINT"
         done
     elif [ -z "$2" ]; then
         setup_subvols_exclude
@@ -376,6 +394,7 @@ elif [ "$DO_ALL" = "1" ]; then
         do
             do_multiple "$DO_ACTION" "$SUBVOL"
         done
+        list_subvolumes_excluded "$1"
     else
         pod2usage -exit 0 "$0"
         echo "ERROR: Extraneous argument '$2'" >&2
@@ -483,12 +502,12 @@ time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 =item Snapshot naming
 
 A choice has been made to mint a single datetime string which is used for all
-snapshot names in a given B<snazzer> invocation, regardless of how long or at
-which exact time the snapshotting process takes place for each subvolume. This
-makes for consistency across all subvolumes and filesystems, in case identifying
-which disparate group of snapshots were part of a single snapshotting run. If
-the actual datetime of the snapshot event is important to you, this is available
-from the C<btrfs subvolume show> command.
+snapshot names in a given B<snazzer> snapshot invocation, regardless of how long
+or at which exact time the snapshotting process takes place for each subvolume.
+This makes for consistency across all subvolumes and filesystems, in case
+identifying which disparate group of snapshots were part of a single
+snapshotting run. If the actual datetime of the snapshot event is important to
+you, this is available from the C<btrfs subvolume show> command.
 
 =item BTRFS subvolume path name assumption
 
