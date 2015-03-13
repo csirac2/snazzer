@@ -43,7 +43,7 @@ setup_subvols_exclude() {
 var/cache
 var/lib/docker
 .snapshots
-/etc/*secret*
+etc/*secret*
 HERE
         cat <<HERE >&2
 ERROR: missing '$SNAZZER_SUBVOLS_EXCLUDE_FILE', should contain entries such as:
