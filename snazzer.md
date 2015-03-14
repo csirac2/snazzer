@@ -69,7 +69,7 @@ snapshots already measured by current hostname
 
 # ENVIRONMENT
 
-- **SNAZZER\_SUBVOLS\_EXCLUDE\_FILE**
+- SNAZZER\_SUBVOLS\_EXCLUDE\_FILE
 
     Filename of newline separated list of shell glob patterns of subvolume pathnames
     which should be excluded from `snazzer --all` invocations; compatible with
@@ -80,7 +80,7 @@ snapshots already measured by current hostname
 
         SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 
-- **SNAZZER\_USE\_UTC**=1
+- SNAZZER\_USE\_UTC=1
 
     For snapshot naming and **snazzer-measure** output use UTC times of the form
     `YYYY-MM-DDTHHMMSSZ` instead of local time+offset `YYYY-MM-DDTHHMMSS+hhmm`
@@ -130,18 +130,18 @@ snapshots already measured by current hostname
 **snazzer** will abort with an error message printed to STDERR and non-zero exit
 status under the following conditions:
 
-- 1 - invalid arguments
-- 2 - path is not a filesystem mountpoint
-- 3 - one or more paths were not btrfs subvolumes
-- 4 - prune expected /path/to/subvol/.snapshotz directory which was missing
-- 5 - prune expected --dry-run or --force
-- 6 - tried to write a .snapshot\_measurements.exclude file in the snapshot
+- 1. invalid arguments
+- 2. path is not a filesystem mountpoint
+- 3. one or more paths were not btrfs subvolumes
+- 4. prune expected /path/to/subvol/.snapshotz directory which was missing
+- 5. prune expected --dry-run or --force
+- 6. tried to write a .snapshot\_measurements.exclude file in the snapshot
 root, but it already exists in the current subvolume
-- 7 - tried to perform snapshot measurements while existing measurements are
+- 7. tried to perform snapshot measurements while existing measurements are
 already in progress, check lock dir at /var/run/snazzer-measure.lock
-- 8 - detected left-over \*.tmp snapshots in the .snapshotz path. These could
+- 8. detected left-over \*.tmp snapshots in the .snapshotz path. These could
 also indicate that another snazzer operation is currently already running.
-- 9 - tried to display man page with a formatter which is not installed
+- 9. tried to display man page with a formatter which is not installed
 
 # SEE ALSO
 

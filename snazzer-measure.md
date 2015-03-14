@@ -15,64 +15,66 @@ core GNU userland utilities.
 
 The output includes:
 
-- - `du -bs --time` (bytes used, most recently modified file datetime)
-- - sha512sum of the result of a reproducible tarball of the directory
-- - `gpg2 --armor --sign` of the same
-- - instructions for reproducing or verifying each of the above
-- - hostname and datetime of **snazzer-measure** invocation
-- - `tar --version`, `tar --show-defaults`
+- `du -bs --time` (bytes used, most recently modified file datetime)
+- sha512sum of the result of a reproducible tarball of the directory
+- `gpg2 --armor --sign` of the same
+- instructions for reproducing or verifying each of the above
+- hostname and datetime of **snazzer-measure** invocation
+- `tar --version`, `tar --show-defaults`
 
 # OPTIONS
 
-- - **SNAZZER\_SIG\_CMD** (envar): Command to generate PGP SIGNATURE text.
-Takes input from stdin, output to stdout. Signatures can be disabled with
-`SNAZZER_SIG_CMD=' '`. Default:
-
-        DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-            --detach-sign -"
-
-- - **SNAZZER\_MEASUREMENTS\_FILE** (envar): A filename within the measured
-directory excluded from measurements (changes to this file do not affect
-results). Default:
-
-        SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
-
-- - **MY\_KEYFILES\_ARE\_INVINCIBLE**=1 (envar): skip sanity check/abort when
-gpg secret key exists on a subvolume included in default snazzer snapshots
-- - **SNAZZER\_USE\_UTC** (envar): use UTC times of the form
-`YYYY-MM-DDTHHMMSSZ` instead of the default local time+offset
-`YYYY-MM-DDTHHMMSS+hhmm`
-- **--help**
-
-    Brief help message
-
-- **--man**
-
-    Full documentation
-
+- **--help**: Brief help message
+- **--man**: Full documentation
 - **--man-roff**: Full documentation as \*roff output, Eg:
 
         snazzer-measure --man-roff | nroff -man
 
 - **--man-markdown**: Full documentation as markdown output, Eg:
 
-        snazzer-measure --man-markdown > snazzer-manpage.md
+        snazzer-measure --man-markdown > snazzer-measure-manpage.md
+
+# ENVIRONMENT
+
+- SNAZZER\_SIG\_CMD
+
+    Command to generate PGP SIGNATURE text. Takes input from stdin, output to
+    stdout. Signatures can be disabled with `SNAZZER_SIG_CMD=' '`. Default:
+
+        DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
+            --detach-sign -"
+
+- SNAZZER\_MEASUREMENTS\_FILE
+
+    A filename within the measured directory excluded from measurements (changes to
+    this file do not affect results). Default:
+
+        SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
+
+- MY\_KEYFILES\_ARE\_INVINCIBLE=1
+
+    Skip sanity check/abort when gpg secret key exists on a subvolume included in
+    default snazzer snapshots
+
+- SNAZZER\_USE\_UTC
+Use UTC times of the form `YYYY-MM-DDTHHMMSSZ` instead of the default local
+time+offset `YYYY-MM-DDTHHMMSS+hhmm`
 
 # EXIT STATUS
 
 **snazzer-measure** will abort with an error message printed to STDERR and
 non-zero exit status under the following conditions:
 
-- 1 - Invalid argument
-- 2 - Path string not specified
-- 3 - Path string not a directory
-- 4 - GPG signature would have been generated with a secret keyfile stored
+- 1. Invalid argument
+- 2. Path string not specified
+- 3. Path string not a directory
+- 4. GPG signature would have been generated with a secret keyfile stored
 in a subvolume which has not been excluded from default snazzer snapshots, see
-[\*\*\*IMPORTANT\*\*\*](https://metacpan.org/pod/***IMPORTANT***) below
-- 5 - Expected the .snazzer\_measurements.exclude file to contain an entry
+[IMPORTANT](https://metacpan.org/pod/IMPORTANT) below
+- 5. Expected the .snazzer\_measurements.exclude file to contain an entry
 for the .snazzer\_measurements file
 
-# \*\*\*IMPORTANT\*\*\*
+# IMPORTANT
 
 Please note that if you are using this tool to gain some form of integrity
 measurement (Eg. you want to detect tampering), GPG private keys used for the
@@ -84,7 +86,7 @@ re-sign modifications made by anyone who happens to be looking.
 
 # BUGS AND LIMITATIONS
 
-- **MY\_KEYFILES\_ARE\_INVINCIBLE**
+- MY\_KEYFILES\_ARE\_INVINCIBLE
 
     The sanity check for location of GPG secret keyfile may be more annoying than
     helpful on installations using smartcards, TPMs, or other methods of protecting

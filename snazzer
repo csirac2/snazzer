@@ -518,7 +518,7 @@ snapshots already measured by current hostname
 
 =over
 
-=item B<SNAZZER_SUBVOLS_EXCLUDE_FILE>
+=item * SNAZZER_SUBVOLS_EXCLUDE_FILE
 
 Filename of newline separated list of shell glob patterns of subvolume pathnames
 which should be excluded from C<snazzer --all> invocations; compatible with
@@ -529,7 +529,7 @@ Default:
 
   SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 
-=item B<SNAZZER_USE_UTC>=1
+=item * SNAZZER_USE_UTC=1
 
 For snapshot naming and B<snazzer-measure> output use UTC times of the form
 C<YYYY-MM-DDTHHMMSSZ> instead of local time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
@@ -540,7 +540,7 @@ C<YYYY-MM-DDTHHMMSSZ> instead of local time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 
 =over
 
-=item Snapshot naming
+=item * Snapshot naming
 
 A choice has been made to mint a single datetime string which is used for all
 snapshot names in a given B<snazzer> snapshot invocation, regardless of how long
@@ -550,14 +550,14 @@ identifying which snapshots were part of a given snapshotting run is possible.
 If the actual datetime of the snapshot event is important to you, this is
 available from the C<btrfs subvolume show> command.
 
-=item BTRFS subvolume path name assumption
+=item * BTRFS subvolume path name assumption
 
 An assumption has been made that a subvolume will mounted under the same path
 (relative to mountpoint) as its path name indicated by C<btrfs subvolume list>.
 If you have manually mounted subvolumes under mountpoints inconsistent with this
 assumption, breakage will occur.
 
-=item SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -v
+=item * SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -v
 
 A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
 patterns in this file to a regex suitable for grep -v. The assumption is that
@@ -565,7 +565,7 @@ the exclude patterns file should only contain "boring" paths. Obvious regex
 characters are escaped, however there are likely many possible hostile path glob
 patterns which will break things.
 
-=item .snapshot_measurements.exclude is a work-around to the btrfs atime bug
+=item * .snapshot_measurements.exclude is a work-around to the btrfs atime bug
 
 Snapshots may include empty directories under which some other subvol may have
 existed in the original, snapshotted subvolume. However, btrfs has a bug where
@@ -587,26 +587,26 @@ status under the following conditions:
 
 =over
 
-=item 1 - invalid arguments
+=item 1. invalid arguments
 
-=item 2 - path is not a filesystem mountpoint
+=item 2. path is not a filesystem mountpoint
 
-=item 3 - one or more paths were not btrfs subvolumes
+=item 3. one or more paths were not btrfs subvolumes
 
-=item 4 - prune expected /path/to/subvol/.snapshotz directory which was missing
+=item 4. prune expected /path/to/subvol/.snapshotz directory which was missing
 
-=item 5 - prune expected --dry-run or --force
+=item 5. prune expected --dry-run or --force
 
-=item 6 - tried to write a .snapshot_measurements.exclude file in the snapshot
+=item 6. tried to write a .snapshot_measurements.exclude file in the snapshot
 root, but it already exists in the current subvolume
 
-=item 7 - tried to perform snapshot measurements while existing measurements are
+=item 7. tried to perform snapshot measurements while existing measurements are
 already in progress, check lock dir at /var/run/snazzer-measure.lock
 
-=item 8 - detected left-over *.tmp snapshots in the .snapshotz path. These could
+=item 8. detected left-over *.tmp snapshots in the .snapshotz path. These could
 also indicate that another snazzer operation is currently already running.
 
-=item 9 - tried to display man page with a formatter which is not installed
+=item 9. tried to display man page with a formatter which is not installed
 
 =back
 

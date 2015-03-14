@@ -1112,55 +1112,49 @@ those which are no longer needed to meet retention preferences
 
 =head1 OPTIONS
 
-=over 1
+=over
 
-=item B<--yearlies>=N or B<SNAZZER_YEARLIES_TO_KEEP>=N
+=item B<--invert:> Invert output to contain only lines which should be retained
 
-Keep one date per year for the last N years. Default: 1000
+=item B<--gen-example-input:> Generate example datetime strings for testing
 
-=item B<--monthlies>=N or B<SNAZZER_MONTHLIES_TO_KEEP>=N
+=item B<--verbose:> Verbose debugging output to STDERR
 
-Keep one date per month for the last N months. Default: 12
+=item B<--help:> Brief help message
 
-=item B<--daylies>=N or B<SNAZZER_DAYLIES_TO_KEEP>=N
+=item B<--man:> Full documentation
 
-Keep one date per day for the last N days. Default: 32
-
-=item B<--hourlies>=N or B<SNAZZER_HOURLIES_TO_KEEP>=N
-
-Keep one date per hour for the last N hours. Default: 24
-
-=item B<--invert>
-
-Invert output to contain only those lines which should be retained
-
-=item B<--gen-example-input>
-
-Generate example datetime strings suitable for testing
-
-=item B<--verbose>
-
-Verbose debugging output to STDERR
-
-=item B<--help>
-
-Brief help message
-
-=item B<--man>
-
-Full documentation
-
-=item B<--man-roff>: Full documentation as *roff output, Eg:
+=item B<--man-roff:> Full documentation as *roff output, Eg:
 
     snazzer-prune-candidates --man-roff | nroff -man
 
-=item B<--man-markdown>: Full documentation as markdown output, Eg:
+=item B<--man-markdown:> Full documentation as markdown output, Eg:
 
     snazzer-prune-candidates --man-markdown > snazzer-prune-candidates-man.md
 
-=item B<--tests>
+=item B<--tests:> Run tests (for developers/maintainers)
 
-Run tests (for developers/maintainers)
+=back
+
+=head1 ENVIRONMENT
+
+=over 1
+
+=item * SNAZZER_YEARLIES_TO_KEEP
+
+Keep one date per year for the last N years. Default: 1000
+
+=item * SNAZZER_MONTHLIES_TO_KEEP
+
+Keep one date per month for the last N months. Default: 12
+
+=item * SNAZZER_DAYLIES_TO_KEEP
+
+Keep one date per day for the last N days. Default: 31
+
+=item * SNAZZER_HOURLIES_TO_KEEP
+
+Keep one date per hour for the last N hours. Default: 24
 
 =back
 
@@ -1200,11 +1194,11 @@ and non-zero exit status under the following conditions:
 
 =over 1
 
-=item 1 - A retention preference value contains anything other than digits
+=item 1. A retention preference value contains anything other than digits
 
-=item 2 - Line does not end in a valid datetime string pattern
+=item 2. Line does not end in a valid datetime string pattern
 
-=item 3 - Datetime contains obviously non-sensical digits
+=item 3. Datetime contains obviously non-sensical digits
 
 =back
 
@@ -1212,7 +1206,7 @@ and non-zero exit status under the following conditions:
 
 =over
 
-=item Homebrew datetime code warning
+=item * Homebrew datetime code
 
 Due to a desire to avoid any non-core library dependencies there may be bugs
 with all the fun things that happen with home-brew time handling code: daylight
@@ -1221,7 +1215,7 @@ savings, leap-years/hours/minutes/seconds and treatment of mixed timezones.
 A future version should try to use an appropriate datetime library to completely
 offload normalization, differencing and comparison of datetimes when available.
 
-=item When some datetimes are very close together: why they mightn't be pruned
+=item * When some datetimes are close together, they mightn't be pruned
 
 B<snazzer-prune-candidates> iterates over each line of the input several times:
 once each to mark datetimes required to be kept to meet hourly, daily, monthly

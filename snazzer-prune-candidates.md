@@ -15,53 +15,38 @@ those which are no longer needed to meet retention preferences
 
 # OPTIONS
 
-- **--yearlies**=N or **SNAZZER\_YEARLIES\_TO\_KEEP**=N
-
-    Keep one date per year for the last N years. Default: 1000
-
-- **--monthlies**=N or **SNAZZER\_MONTHLIES\_TO\_KEEP**=N
-
-    Keep one date per month for the last N months. Default: 12
-
-- **--daylies**=N or **SNAZZER\_DAYLIES\_TO\_KEEP**=N
-
-    Keep one date per day for the last N days. Default: 32
-
-- **--hourlies**=N or **SNAZZER\_HOURLIES\_TO\_KEEP**=N
-
-    Keep one date per hour for the last N hours. Default: 24
-
-- **--invert**
-
-    Invert output to contain only those lines which should be retained
-
-- **--gen-example-input**
-
-    Generate example datetime strings suitable for testing
-
-- **--verbose**
-
-    Verbose debugging output to STDERR
-
-- **--help**
-
-    Brief help message
-
-- **--man**
-
-    Full documentation
-
-- **--man-roff**: Full documentation as \*roff output, Eg:
+- **--invert:** Invert output to contain only lines which should be retained
+- **--gen-example-input:** Generate example datetime strings for testing
+- **--verbose:** Verbose debugging output to STDERR
+- **--help:** Brief help message
+- **--man:** Full documentation
+- **--man-roff:** Full documentation as \*roff output, Eg:
 
         snazzer-prune-candidates --man-roff | nroff -man
 
-- **--man-markdown**: Full documentation as markdown output, Eg:
+- **--man-markdown:** Full documentation as markdown output, Eg:
 
         snazzer-prune-candidates --man-markdown > snazzer-prune-candidates-man.md
 
-- **--tests**
+- **--tests:** Run tests (for developers/maintainers)
 
-    Run tests (for developers/maintainers)
+# ENVIRONMENT
+
+- SNAZZER\_YEARLIES\_TO\_KEEP
+
+    Keep one date per year for the last N years. Default: 1000
+
+- SNAZZER\_MONTHLIES\_TO\_KEEP
+
+    Keep one date per month for the last N months. Default: 12
+
+- SNAZZER\_DAYLIES\_TO\_KEEP
+
+    Keep one date per day for the last N days. Default: 31
+
+- SNAZZER\_HOURLIES\_TO\_KEEP
+
+    Keep one date per hour for the last N hours. Default: 24
 
 # DESCRIPTION
 
@@ -97,13 +82,13 @@ any decision-making part of the program.
 **snazzer-prune-candidates** will abort with an error message printed to STDOUT
 and non-zero exit status under the following conditions:
 
-- 1 - A retention preference value contains anything other than digits
-- 2 - Line does not end in a valid datetime string pattern
-- 3 - Datetime contains obviously non-sensical digits
+- 1. A retention preference value contains anything other than digits
+- 2. Line does not end in a valid datetime string pattern
+- 3. Datetime contains obviously non-sensical digits
 
 # BUGS AND LIMITATIONS
 
-- Homebrew datetime code warning
+- Homebrew datetime code
 
     Due to a desire to avoid any non-core library dependencies there may be bugs
     with all the fun things that happen with home-brew time handling code: daylight
@@ -112,7 +97,7 @@ and non-zero exit status under the following conditions:
     A future version should try to use an appropriate datetime library to completely
     offload normalization, differencing and comparison of datetimes when available.
 
-- When some datetimes are very close together: why they mightn't be pruned
+- When some datetimes are close together, they mightn't be pruned
 
     **snazzer-prune-candidates** iterates over each line of the input several times:
     once each to mark datetimes required to be kept to meet hourly, daily, monthly

@@ -266,51 +266,27 @@ The output includes:
 
 =over
 
-=item - C<du -bs --time> (bytes used, most recently modified file datetime)
+=item * C<du -bs --time> (bytes used, most recently modified file datetime)
 
-=item - sha512sum of the result of a reproducible tarball of the directory
+=item * sha512sum of the result of a reproducible tarball of the directory
 
-=item - C<gpg2 --armor --sign> of the same
+=item * C<gpg2 --armor --sign> of the same
 
-=item - instructions for reproducing or verifying each of the above
+=item * instructions for reproducing or verifying each of the above
 
-=item - hostname and datetime of B<snazzer-measure> invocation
+=item * hostname and datetime of B<snazzer-measure> invocation
 
-=item - C<tar --version>, C<tar --show-defaults>
+=item * C<tar --version>, C<tar --show-defaults>
 
 =back
 
 =head1 OPTIONS
 
-=over 1
+=over
 
-=item - B<SNAZZER_SIG_CMD> (envar): Command to generate PGP SIGNATURE text.
-Takes input from stdin, output to stdout. Signatures can be disabled with
-C<SNAZZER_SIG_CMD=' '>. Default:
+=item B<--help>: Brief help message
 
-  DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-      --detach-sign -"
-
-=item - B<SNAZZER_MEASUREMENTS_FILE> (envar): A filename within the measured
-directory excluded from measurements (changes to this file do not affect
-results). Default:
-
-  SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
-
-=item - B<MY_KEYFILES_ARE_INVINCIBLE>=1 (envar): skip sanity check/abort when
-gpg secret key exists on a subvolume included in default snazzer snapshots
-
-=item - B<SNAZZER_USE_UTC> (envar): use UTC times of the form
-C<YYYY-MM-DDTHHMMSSZ> instead of the default local time+offset
-C<YYYY-MM-DDTHHMMSS+hhmm>
-
-=item B<--help>
-
-Brief help message
-
-=item B<--man>
-
-Full documentation
+=item B<--man>: Full documentation
 
 =item B<--man-roff>: Full documentation as *roff output, Eg:
 
@@ -318,7 +294,37 @@ Full documentation
 
 =item B<--man-markdown>: Full documentation as markdown output, Eg:
 
-    snazzer-measure --man-markdown > snazzer-manpage.md
+    snazzer-measure --man-markdown > snazzer-measure-manpage.md
+
+=back
+
+=head1 ENVIRONMENT
+
+=over
+
+=item * SNAZZER_SIG_CMD
+
+Command to generate PGP SIGNATURE text. Takes input from stdin, output to
+stdout. Signatures can be disabled with C<SNAZZER_SIG_CMD=' '>. Default:
+
+  DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
+      --detach-sign -"
+
+=item * SNAZZER_MEASUREMENTS_FILE
+
+A filename within the measured directory excluded from measurements (changes to
+this file do not affect results). Default:
+
+  SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
+
+=item * MY_KEYFILES_ARE_INVINCIBLE=1
+
+Skip sanity check/abort when gpg secret key exists on a subvolume included in
+default snazzer snapshots
+
+=item * SNAZZER_USE_UTC
+Use UTC times of the form C<YYYY-MM-DDTHHMMSSZ> instead of the default local
+time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 
 =back
 
@@ -327,24 +333,24 @@ Full documentation
 B<snazzer-measure> will abort with an error message printed to STDERR and
 non-zero exit status under the following conditions:
 
-=over 1
+=over
 
-=item 1 - Invalid argument
+=item 1. Invalid argument
 
-=item 2 - Path string not specified
+=item 2. Path string not specified
 
-=item 3 - Path string not a directory
+=item 3. Path string not a directory
 
-=item 4 - GPG signature would have been generated with a secret keyfile stored
+=item 4. GPG signature would have been generated with a secret keyfile stored
 in a subvolume which has not been excluded from default snazzer snapshots, see
-L<***IMPORTANT***> below
+L<IMPORTANT> below
 
-=item 5 - Expected the .snazzer_measurements.exclude file to contain an entry
+=item 5. Expected the .snazzer_measurements.exclude file to contain an entry
 for the .snazzer_measurements file
 
 =back
 
-=head1 ***IMPORTANT***
+=head1 IMPORTANT
 
 Please note that if you are using this tool to gain some form of integrity
 measurement (Eg. you want to detect tampering), GPG private keys used for the
@@ -358,13 +364,13 @@ re-sign modifications made by anyone who happens to be looking.
 
 =over
 
-=item B<MY_KEYFILES_ARE_INVINCIBLE>
+=item * MY_KEYFILES_ARE_INVINCIBLE
 
 The sanity check for location of GPG secret keyfile may be more annoying than
 helpful on installations using smartcards, TPMs, or other methods of protecting
 keyfiles - hence the B<MY_KEYFILES_ARE_INVINCIBLE> work-around.
 
-=item Temporary files
+=item * Temporary files
 
 To avoid unnecessary I/O, gpg signing and shasumming are done in parallel from
 the same C<tar --to-stdout> pipe; this involves creating a temporary named pipe
