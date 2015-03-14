@@ -43,7 +43,7 @@ setup_subvols_exclude() {
 var/cache
 var/lib/docker
 .snapshots
-etc/*secret*
+*secret*
 HERE
         cat <<HERE >&2
 ERROR: missing '$SNAZZER_SUBVOLS_EXCLUDE_FILE', should contain entries such as:
@@ -55,35 +55,46 @@ HERE
     fi
 }
 
+glob2grep_file() {
+    FILE="$1"
+    OUT=$(mktemp)
+
+    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' > "$OUT"
+
+    echo "$OUT"
+}
+
 list_subvolumes_excluded() {
     FS="$1"
-    assert_mountpoint "$FS"
-    if [ "$FS" = "/" ]; then
-        LIST=$(btrfs subvolume list -o "$FS" | \
-            grep -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
-            sed -n "s|.*path \(.*\)|$FS\1|p" | sed ':a;N;$!ba;s/\n/ /g')
-    else
-        LIST=$(btrfs subvolume list -o "$FS" | \
-            grep -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
-            sed -n "s|.*path \(.*\)|$FS/\1|p" | sed ':a;N;$!ba;s/\n/ /g')
-    fi
+    LIST=$(list_subvolumes "$FS" 1 | sed ':a;N;$!ba;s/\n/ /g')
+
     if [ -n "$LIST" ]; then
-        printf "\nExcluded: $LIST\n"
+        echo ""
+        echo "Excluded: $LIST"
+        echo ""
     fi
 }
 
 list_subvolumes() {
     FS="$1"
+    INV="$2"
+    if [ -z "$INV" ]; then
+        INV=" -v "
+    else
+        INV=
+    fi
     assert_mountpoint "$FS"
+    EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     if [ "$FS" = "/" ]; then
         btrfs subvolume list -o "$FS" | \
-            grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            grep $INV -f "$EXCL_FILE" | \
             grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS\1|p"
     else
         btrfs subvolume list -o "$FS" | \
-            grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | \
+            grep $INV -f "$EXCL_FILE" | \
             grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS/\1|p"
     fi
+    rm "$EXCL_FILE"
 }
 
 # Get a list of mountpoints from the unique list of devices showing up as
@@ -413,7 +424,7 @@ __END__
 =head1 NAME
 
 snazzer - create read-only C</subvol/.snapshotz/[isodate]> btrfs snapshots,
-offers pruning of unneeded snapshots according to retention preferences.
+offers snapshot pruning and measurement
 
 =head1 SYNOPSIS
 
@@ -455,7 +466,7 @@ Prune only the explicitly named subvols at /srv, /var/log and root:
 
 =head1 OPTIONS
 
-=over 1
+=over
 
 =item B<--all> B<[mountpoint]>: act on all subvolumes under mountpoint. If
 mountpoint is omitted, B<snazzer> acts on all mounted btrfs filesystems.
@@ -480,34 +491,43 @@ snapshots already measured by current hostname
 
 =item B<--generate-test-img> C<file.img>: create btrfs image for testing
 
-=item - B<SNAZZER_SUBVOLS_EXCLUDE_FILE> (envar): filename of newline separated
-list of shell glob patterns of subvolume pathnames which should be excluded from
-C<snazzer --all> invocations; compatible with C<--exclude-from> for B<du> and
-B<tar>.  Examples of subvolume patterns to exclude from regular snapshotting:
-/etc/*secret*, /var/cache, /var/lib/docker/btrfs, .snapshots.
-B<NOTE:> C<.snapshotz> is always excluded. Default:
+=back
+
+=head1 ENVIRONMENT
+
+=over
+
+=item B<SNAZZER_SUBVOLS_EXCLUDE_FILE>
+
+Filename of newline separated list of shell glob patterns of subvolume pathnames
+which should be excluded from C<snazzer --all> invocations; compatible with
+C<--exclude-from> for B<du> and B<tar>.  Examples of subvolume patterns to
+exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/btrfs,
+.snapshots.  B<NOTE:> C<.snapshotz> is always excluded.
+Default:
 
   SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 
-=item - B<SNAZZER_USE_UTC>=1 (envar): for snapshot naming and B<snazzer-measure>
-output use UTC times of the form C<YYYY-MM-DDTHHMMSSZ> instead of local
-time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
+=item B<SNAZZER_USE_UTC>=1
+
+For snapshot naming and B<snazzer-measure> output use UTC times of the form
+C<YYYY-MM-DDTHHMMSSZ> instead of local time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 
 =back
 
 =head1 BUGS AND LIMITATIONS
 
-=over 1
+=over
 
 =item Snapshot naming
 
 A choice has been made to mint a single datetime string which is used for all
 snapshot names in a given B<snazzer> snapshot invocation, regardless of how long
 or at which exact time the snapshotting process takes place for each subvolume.
-This makes for consistency across all subvolumes and filesystems, in case
-identifying which disparate group of snapshots were part of a single
-snapshotting run. If the actual datetime of the snapshot event is important to
-you, this is available from the C<btrfs subvolume show> command.
+This makes for consistency across all subvolumes and filesystems, so that
+identifying which snapshots were part of a given snapshotting run is possible.
+If the actual datetime of the snapshot event is important to you, this is
+available from the C<btrfs subvolume show> command.
 
 =item BTRFS subvolume path name assumption
 
@@ -516,14 +536,23 @@ An assumption has been made that a subvolume will mounted under the same path
 If you have manually mounted subvolumes under mountpoints inconsistent with this
 assumption, breakage will occur.
 
-=item .snapshot_measurements.exclude is a giant work-around to a BTRFS bug
+=item SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -v
 
-Basically, snapshots may include empty directories under which some other subvol
-may have existed in the original, snapshotted subvolume. But these empty
-directories behave differently to empty directories created with `mkdir`: the
-atimes are always set to whatever the current time happens to be. So we have
-no hope of creating reproducible shasums or PGP signatures unless those
-directories are excluded from our measurements of the snapshot.
+A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
+patterns in this file to a regex suitable for grep -v. The assumption is that
+the exclude patterns file should only contain "boring" paths. Obvious regex
+characters are escaped, however there are likely many possible hostile path glob
+patterns which will break things.
+
+=item .snapshot_measurements.exclude is a work-around to the btrfs atime bug
+
+Snapshots may include empty directories under which some other subvol may have
+existed in the original, snapshotted subvolume. However, btrfs has a bug where
+these empty directories behave differently to empty directories created with
+C<mkdir>: atimes always return with the current local time, which is obvioulsy
+different from one second to the next. So we have no hope of creating
+reproducible shasums or PGP signatures unless those directories are excluded
+from our measurements of the snapshot.
 
 http://comments.gmane.org/gmane.comp.file-systems.btrfs/43452
 https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
@@ -535,7 +564,7 @@ https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
 B<snazzer> will abort with an error message printed to STDERR and non-zero exit
 status under the following conditions:
 
-=over 1
+=over
 
 =item 1 - invalid arguments
 
