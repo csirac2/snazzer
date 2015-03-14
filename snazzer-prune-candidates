@@ -3,6 +3,7 @@ package App::Snazzer::Prune;
 use strict;
 use warnings;
 use 5.010;
+use Cwd 'abs_path';
 our $VERSION = 0.1;
 
 # Hrm, let's see if I can remember how to perl...
@@ -15,6 +16,7 @@ BEGIN {
 }
 use Getopt::Long(qw(GetOptions));
 use Pod::Usage(qw(pod2usage));
+use Pod::Man();
 use Time::Local(qw(timegm));
 use POSIX qw(strftime);
 
@@ -41,6 +43,8 @@ sub init {
     GetOptions(
         'help|?'            => \$opts{help},
         'man'               => \$opts{man},
+        'man-markdown'      => \$opts{'man-markdown'},
+        'man-roff'          => \$opts{'man-roff'},
         'tests'             => \$opts{run_tests},
         'gen-example-input' => \$opts{gen_examples},
         'verbose'           => \$opts{verbose},
@@ -50,8 +54,36 @@ sub init {
         'daylies=i'         => \$retain{daylies},
         'hourlies=i'        => \$retain{hourlies},
     ) or pod2usage(2);
-    pod2usage(1) if $opts{help};
-    pod2usage( -exitval => 0, -verbose => 2 ) if $opts{man};
+    if ( $opts{help} ) {
+        pod2usage(1);
+    }
+    elsif ( $opts{man} ) {
+        pod2usage( -exitval => 0, -verbose => 2 );
+    }
+    elsif ( $opts{'man-roff'} ) {
+        my $parser = Pod::Man->new(
+            release => $VERSION,
+            name    => 'snazzer-prune-candidates',
+            section => 8,
+            center  => '',
+
+        );
+
+        $parser->parse_from_file( abs_path($0) );
+        exit;
+    }
+    elsif ( $opts{'man-markdown'} ) {
+        if ( eval { require Pod::Markdown; 1; } ) {
+            my $parser = Pod::Markdown->new( version => $VERSION );
+
+            $parser->filter( abs_path($0) );
+            exit;
+        }
+        else {
+            print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+            exit 9;
+        }
+    }
 
     foreach my $part ( sort keys %retain_defaults ) {
         if ( defined $retain{$part} ) {
@@ -574,9 +606,9 @@ else {
         push( @input, $_ );
     }
     @output = process(@input);
-    
+
     print join( "\n", @output );
-    if (scalar(@output)) {
+    if ( scalar(@output) ) {
         print "\n";
     }
 }
@@ -1118,6 +1150,14 @@ Brief help message
 
 Full documentation
 
+=item B<--man-roff>: Full documentation as *roff output, Eg:
+
+    snazzer-prune-candidates --man-roff | nroff -man
+
+=item B<--man-markdown>: Full documentation as markdown output, Eg:
+
+    snazzer-prune-candidates --man-markdown > snazzer-prune-candidates-man.md
+
 =item B<--tests>
 
 Run tests (for developers/maintainers)
@@ -1240,4 +1280,5 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 =cut

@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+SNAZZER_VERSION=0.1
 SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
 if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
@@ -367,6 +368,18 @@ do
     case "$1" in
         -h | --help ) pod2usage -exit 0 "$0"; exit ;;
              --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+             --man-markdown )
+             cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+                 exit ;;
         -p | --prune ) DO_ACTION="prune"; ;;
         -m | --measure ) DO_ACTION="measure"; ;;
         -f | --force ) DO_FORCE=1; ;;
@@ -489,6 +502,14 @@ snapshots already measured by current hostname
 
 =item B<--man>: Full documentation
 
+=item B<--man-roff>: Full documentation as *roff output, Eg:
+
+    snazzer --man-roff | nroff -man
+
+=item B<--man-markdown>: Full documentation as markdown output, Eg:
+
+    snazzer --man-markdown > snazzer-manpage.md
+
 =item B<--generate-test-img> C<file.img>: create btrfs image for testing
 
 =back
@@ -584,6 +605,8 @@ already in progress, check lock dir at /var/run/snazzer-measure.lock
 
 =item 8 - detected left-over *.tmp snapshots in the .snapshotz path. These could
 also indicate that another snazzer operation is currently already running.
+
+=item 9 - tried to display man page with a formatter which is not installed
 
 =back
 

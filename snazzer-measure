@@ -1,6 +1,7 @@
 #!/bin/sh
 
 set -e
+SNAZZER_VERSION=0.1
 if [ "$SNAZZER_USE_UTC" = "1" ]; then
     DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
 else
@@ -29,7 +30,7 @@ build_exclude_switch() {
             = "0" ]; then
             echo "ERROR: Expected $EXCL_FILE to contain" >&2
             printf "\t%s unable to continue" "$SNAZZER_MEASUREMENTS_FILE" >&2
-            exit 4
+            exit 5
         fi
         echo "--exclude-from='$EXCL_FILE'"
     else
@@ -160,7 +161,7 @@ Move the private keyfiles you wish to use for measurement signing to a subvolume
 excluded in /etc/snazzer/exclude.patterns, and ensure that the gpg environment
 and config is set correctly. Stubbornly refusing to shoot self in foot; if you
 feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
-        exit 3
+        exit 4
     fi
 }
 
@@ -211,17 +212,31 @@ show_usage() {
     fi
 }
 
-if [ "$1" = "--help" -o "$1" = "-h" ]; then
-    pod2usage -exit 0 "$0"
-elif [ "$1" = "--man" ]; then
-    pod2usage -exit 0 -verbose 3 "$0"
-elif [ -z "$1" ]; then
+case "$1" in
+    -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+         --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+         --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+         --man-markdown )
+         cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+             exit ;;
+    -* ) echo "ERROR: Invalid argument '$1'" >&2 ; exit 1 ;;
+esac
+
+if [ -z "$1" ]; then
     show_usage "No path specified"
-    exit 1
+    exit 2
 else
     if [ ! -d "$1" ]; then
         echo "ERROR: path '$1' is not a directory" >&2
-        exit 2
+        exit 3
     else
         OLD_DIR="$(pwd)"
         cd "$1"
@@ -274,7 +289,7 @@ Takes input from stdin, output to stdout. Signatures can be disabled with
 C<SNAZZER_SIG_CMD=' '>. Default:
 
   DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-      --detach-sign - >/dev/null"
+      --detach-sign -"
 
 =item - B<SNAZZER_MEASUREMENTS_FILE> (envar): A filename within the measured
 directory excluded from measurements (changes to this file do not affect
@@ -297,6 +312,14 @@ Brief help message
 
 Full documentation
 
+=item B<--man-roff>: Full documentation as *roff output, Eg:
+
+    snazzer-measure --man-roff | nroff -man
+
+=item B<--man-markdown>: Full documentation as markdown output, Eg:
+
+    snazzer-measure --man-markdown > snazzer-manpage.md
+
 =back
 
 =head1 EXIT STATUS
@@ -306,15 +329,17 @@ non-zero exit status under the following conditions:
 
 =over 1
 
-=item 1 - Path string not specified
+=item 1 - Invalid argument
 
-=item 2 - Path string not a directory
+=item 2 - Path string not specified
 
-=item 3 - GPG signature would have been generated with a secret keyfile stored
+=item 3 - Path string not a directory
+
+=item 4 - GPG signature would have been generated with a secret keyfile stored
 in a subvolume which has not been excluded from default snazzer snapshots, see
 L<***IMPORTANT***> below
 
-=item 4 - Expected the .snazzer_measurements_exclude file to contain an entry
+=item 5 - Expected the .snazzer_measurements.exclude file to contain an entry
 for the .snazzer_measurements file
 
 =back
