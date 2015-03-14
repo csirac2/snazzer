@@ -24,24 +24,32 @@ Generate a test btrfs image and mount it for playing with:
     snazzer --all /mnt # moar snapshots...
     # have unneeded snapshots now, prune them:
     snazzer --prune --force --all /mnt
-    # generate .snapshot_measurements reports in each snapshot. Perhaps schedule
-    # measurements to run after they've been received on your backup server
-    # rather than burning up CPU and disk I/O on the original host:
-    snazzer --measure --all /mnt
-    # Now observe that running measure again, we're smart enough to skip
-    # re-measuring snapshots which have already been measured by this host
-    # (use --force to override this behaviour):
+    
+generate .snapshot_measurements reports in each snapshot. Perhaps schedule
+measurements to run after they've been received on your backup server
+rather than burning up CPU and disk I/O on the original host:
+
     snazzer --measure --all /mnt
 
-    # Below, commands are example-specific and won't work if copied verbatim:
-    # view the .snapshot_measurements report for one of the snapshots:
+Now observe that running measure again, we're smart enough to skip
+re-measuring snapshots which have already been measured by this host
+(use --force to override this behaviour):
+
+    snazzer --measure --all /mnt
+
+View the .snapshot_measurements report for one of the snapshots (example only):
+
     cat /mnt/.snapshotz/2015-03-10T131520+1100/.snapshot_measurements
-    # run one of the commands in the report to see if we can reproduce shasum:
+
+Run one of the commands in the report to see if we can reproduce shasum  (example only):
+
     cd /mnt/.snapshotz/2015-03-10T131520+1100
     find '.' -xdev -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion \
     --preserve-permissions --one-file-system -c --warning=file-ignored \
     --to-stdout --exclude-from="./.snapshot_measurements.exclude" | sha512sum -b
-    # run the gpg signature verification command listed in the report:
+
+Run the gpg signature verification command listed in the report  (example only):
+
     SIG=$(mktemp) && cat ".snapshot_measurements" | grep -v '/,/' | sed -n \
     '/> on test123host at 2015-03-10T131547+1100, gpg=/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' \
     > "$SIG" && find '.' -xdev -print0 | LC_ALL=C sort -z | tar --null -T - \
