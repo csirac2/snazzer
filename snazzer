@@ -120,6 +120,7 @@ get_subvol_path() {
         echo "$SUBVOL_PATH"
     fi
 }
+
 snapshot_exclude_subvols_cmd() {
 cat <<HERE
     btrfs subvolume list -o '$1' | sed -n 's|.*path $2[/]*\(.*\)|\\1|p'
@@ -315,6 +316,21 @@ do_multiple() {
                         fi
                         measure "$SOURCE"
                         ;;
+            'list-subvolumes') echo "$SOURCE"
+                        ;;
+            'list-snapshots')
+                        if [ "$SOURCE" = "/" ]; then
+                            btrfs subvolume list -o "$SOURCE" | \
+                                grep '\.snapshotz' | \
+                                sed -n "s|.*path .*\.snapshotz/\(.*\)|/\1|p"
+                        else
+                            MOUNTPOINT=$(echo "$SOURCE" | \
+                                sed 's|[&*$.^\|]|\\&|g')
+                            btrfs subvolume list -o "$SOURCE" | \
+                                grep '\.snapshotz' | \
+                                sed -n "s|^.*path .*\.snapshotz/\(.*\)|$MOUNTPOINT/\.snapshotz/\1|p"
+                        fi
+                        ;;
             *) echo "ERROR: invalid cmd '$DO_ACTION'"
                exit 1
                ;;
@@ -390,6 +406,8 @@ HERE
                  exit ;;
         -p | --prune ) DO_ACTION="prune"; ;;
         -m | --measure ) DO_ACTION="measure"; ;;
+             --list-subvolumes ) DO_ACTION="list-subvolumes"; ;;
+             --list-snapshots ) DO_ACTION="list-snapshots"; ;;
         -f | --force ) DO_FORCE=1; ;;
         -d | --dry-run ) DRY_RUN=1; ;;
         -a | --all ) DO_ALL=1; ;;
@@ -503,6 +521,10 @@ B<--force> to measure all snapshots
 =item B<--force>: required for B<--prune> to carry out any pruning operation.
 For B<--measure>, this switch overrides the default behaviour of skipping
 snapshots already measured by current hostname
+
+=item B<--list-subvolumes>: list subvolumes that would be acted on
+
+=item B<--list-snapshots>: list snapshots under subvolumes as above
 
 =item B<--dry-run>: print rather than execute commands that would be run
 
