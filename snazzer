@@ -36,6 +36,13 @@ assert_subvolume() {
     fi
 }
 
+assert_btrfs_tools() {
+    if ! which btrfs >/dev/null; then
+        echo 'ERROR: btrfs command not found' >&2
+        exit 11
+    fi
+}
+
 setup_subvols_exclude() {
     if [ ! -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
         SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=1
@@ -67,12 +74,11 @@ glob2grep_file() {
 
 list_subvolumes_excluded() {
     FS="$1"
-    LIST=$(list_subvolumes "$FS" 1 | sed ':a;N;$!ba;s/\n/ /g')
+    NUM=$(list_subvolumes "$FS" 1 | wc -l)
 
-    if [ -n "$LIST" ]; then
-        echo ""
-        echo "Excluded: $LIST"
-        echo ""
+    if [ "$NUM" != "0" ]; then
+        echo "" >&2
+        echo "Excluded $NUM subvolumes" >&2
     fi
 }
 
@@ -426,6 +432,7 @@ elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
     echo "ERROR: --force and --dry-run are incompatible" >&2
     exit 1
 elif [ "$DO_ALL" = "1" ]; then
+    assert_btrfs_tools
     if [ -z "$1" ]; then
         setup_subvols_exclude
         for MOUNTPOINT in $(list_btrfs_mountpoints); do
@@ -451,6 +458,7 @@ elif [ "$DO_ALL" = "1" ]; then
         exit 1
     fi
 else
+    assert_btrfs_tools
     do_multiple "$DO_ACTION" "$@"
 fi
 if [ "$SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP" = "1" ]; then
@@ -639,6 +647,8 @@ also indicate that another snazzer operation is currently already running.
 =item 9. tried to display man page with a formatter which is not installed
 
 =item 10. missing C<snazzer-measure> or C<snazzer-prune-candidates> from PATH
+
+=item 11. missing C<btrfs> command from PATH
 
 =back
 

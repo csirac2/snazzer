@@ -54,6 +54,8 @@ snapshots which haven't been measured by this hostname are updated - use
 - **--force**: required for **--prune** to carry out any pruning operation.
 For **--measure**, this switch overrides the default behaviour of skipping
 snapshots already measured by current hostname
+- **--list-subvolumes**: list subvolumes that would be acted on
+- **--list-snapshots**: list snapshots under subvolumes as above
 - **--dry-run**: print rather than execute commands that would be run
 - **--help**: Brief help message
 - **--man**: Full documentation
@@ -142,6 +144,8 @@ already in progress, check lock dir at /var/run/snazzer-measure.lock
 - 8. detected left-over \*.tmp snapshots in the .snapshotz path. These could
 also indicate that another snazzer operation is currently already running.
 - 9. tried to display man page with a formatter which is not installed
+- 10. missing `snazzer-measure` or `snazzer-prune-candidates` from PATH
+- 11. missing `btrfs` command from PATH
 
 # SEE ALSO
 
