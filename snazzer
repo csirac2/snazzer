@@ -301,11 +301,19 @@ do_multiple() {
             SOURCE=$(echo "$SOURCE" | sed 's|/$||g')
         fi
         case "$DO_ACTION" in
-            'prune')    prune "$SOURCE"
-                        ;;
             'snapshot') snapshot "$SOURCE"
                         ;;
-            'measure')  measure "$SOURCE"
+            'prune')    if ! which snazzer-prune-candidates >/dev/null; then
+                            echo 'ERROR: snazzer-prune-candidates not found' >&2
+                            exit 10
+                        fi
+                        prune "$SOURCE"
+                        ;;
+            'measure')  if ! which snazzer-measure >/dev/null; then
+                            echo 'ERROR: snazzer-measure not found' >&2
+                            exit 10
+                        fi
+                        measure "$SOURCE"
                         ;;
             *) echo "ERROR: invalid cmd '$DO_ACTION'"
                exit 1
@@ -607,6 +615,8 @@ already in progress, check lock dir at /var/run/snazzer-measure.lock
 also indicate that another snazzer operation is currently already running.
 
 =item 9. tried to display man page with a formatter which is not installed
+
+=item 10. missing C<snazzer-measure> or C<snazzer-prune-candidates> from PATH
 
 =back
 
