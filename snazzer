@@ -260,35 +260,35 @@ HERE
 
 measure_lock() {
     if [ ! -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
-        mkdir "$SNAZZER_MEAS_LOCK_DIR"
-        echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
-        return
+        :
     elif [ ! -f "$SNAZZER_MEAS_LOCK_DIR/pid" ]; then
         echo "ERROR: $SNAZZER_MEAS_LOCK_DIR exists without pidfile 'pid'" >&2
         echo "  Please report this to the author and/or remove the dir" >&2
         exit 7
-    fi
-    OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
-    if ps --pid=$OLD_PID >/dev/null; then
-        echo "ERROR: Another snazzer --measure invocation already running" >&2
-        echo "  $SNAZZER_MEAS_LOCK_DIR/pid $OLD_PID already running" >&2
-        exit 7
     else
-        echo "WARN: Previous snazzer --measure invocation with PID $OLD_PID" >&2
-        echo "  exited ungracefully; $SNAZZER_MEAS_LOCK_DIR/pid is stale." >&2
-        LIST=$(find / -path "*/.snapshotz/*.tmp_$OLD_PID" -exec \
-            echo btrfs subvolume delete \'{}\' \;)
-        if [ -z "$LIST" ]; then
-            echo "  removing:"
-            rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
-            rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
-        else
-            echo "ERROR: Temporary snapshots left behind by PID $OLD_PID" >&2
-            echo "  You may wish to clean this up manually by running:"
-            echo "$LIST"
+        OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
+        if ps --pid=$OLD_PID >/dev/null; then
+            echo "ERROR: A snazzer --measure invocation is already running" >&2
+            echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
             exit 7
+        else
+            echo "WARN: Previous snazzer --measure invocation PID $OLD_PID" >&2
+            echo "  exited ungracefully; $SNAZZER_MEAS_LOCK_DIR/pid stale." >&2
+            LIST=$(find / -path "*/.snapshotz/*.tmp_$OLD_PID" -exec \
+                echo btrfs subvolume delete \'{}\' \;)
+            if [ -z "$LIST" ]; then
+                rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
+                rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
+            else
+                echo "ERROR: Temp snapshots left behind by PID $OLD_PID" >&2
+                echo "  You may wish to clean this up manually by running:"
+                echo "$LIST"
+                exit 7
+            fi
         fi
     fi
+    mkdir "$SNAZZER_MEAS_LOCK_DIR"
+    echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
 }
 
 measure_unlock() {
