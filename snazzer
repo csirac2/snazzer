@@ -331,7 +331,7 @@ do_multiple() {
                         if [ "$SOURCE" = "/" ]; then
                             btrfs subvolume list -o "$SOURCE" | \
                                 grep '\.snapshotz' | \
-                                sed -n "s|.*path .*\.snapshotz/\(.*\)|/\1|p"
+                                sed -n "s|.*path .*\.snapshotz/\(.*\)|/.snapshotz/\1|p"
                         else
                             MOUNTPOINT=$(echo "$SOURCE" | \
                                 sed 's|[&*$.^\|]|\\&|g')
