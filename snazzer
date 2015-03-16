@@ -229,7 +229,10 @@ prune() {
                 grep -v 'Transaction commit: none (default)'")"
         fi
     elif [ "$DRY_RUN" = "1" ]; then
-        printf "\t--dry-run specified so skipping btrfs subvolume delete\n"
+        if [ "$NUM_PRUNE" != "0" ]; then
+            PRUNE_ARGS=$(newlines2quoted "$TO_PRUNE")
+            echo "btrfs subvolume delete $PRUNE_ARGS"
+        fi
     else
         echo "ERROR: --prune expected --force or --dry-run" >&2
         exit 5
