@@ -147,18 +147,19 @@ build_snapshot_cmd() {
     SOURCE="$1"
     SNAP="$2"
     OLD_PWD=$(pwd | sed "s/'/'\\\''/g")
+    PID=$$
 
     cat <<HERE
 #!/bin/sh
 set -e
-btrfs subvolume snapshot '$SOURCE' '${SNAP}.tmp';
-cat <<EXCL > '${SNAP}.tmp/${SNAZZER_MEASUREMENTS_FILE}.exclude';
+btrfs subvolume snapshot '$SOURCE' '${SNAP}.tmp_$PID';
+cat <<EXCL > '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
 $SNAZZER_MEASUREMENTS_FILE
 ${SNAZZER_MEASUREMENTS_FILE}.exclude
 $( eval "cd '$SOURCE'"; snapshot_exclude_subvols . | sed -e 's|[`$]|\\&|g' ; eval "cd '$OLD_PWD'")
 EXCL
-btrfs subvolume snapshot -r '${SNAP}.tmp' '$SNAP' >/dev/null;
-btrfs subvolume delete '${SNAP}.tmp' >/dev/null;
+btrfs subvolume snapshot -r '${SNAP}.tmp_$PID' '$SNAP' >/dev/null;
+btrfs subvolume delete '${SNAP}.tmp_$PID' >/dev/null;
 HERE
 }
 
@@ -208,7 +209,7 @@ prune() {
         echo 'ERROR: $SOURCE does not exist, cannot prune' >&2;
         exit 4;
     fi"
-    SOURCE_TMP=$(eval "ls -d '$SOURCE'/*.tmp 2>/dev/null || true")
+    SOURCE_TMP=$(eval "ls -d '$SOURCE'/*.tmp* 2>/dev/null || true")
     if [ -n "$SOURCE_TMP" ]; then
         echo "ERROR: temporary snapshots left over from an aborted or" >&2
         echo "currently in-progress run detected. Refusing to run in the" >&2
@@ -241,19 +242,58 @@ prune() {
 
 build_measure_cmd() {
     SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
+    PID=$$
 
     cat <<HERE
 #!/bin/sh
 set -e
 printf "\t$SOURCE\n"
-btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp' >/dev/null;
-cd '${SOURCE}.tmp';
+btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp_$PID' >/dev/null;
+cd '${SOURCE}.tmp_$PID';
 snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
 cd ..
 btrfs subvolume delete '${SOURCE}' >/dev/null;
-btrfs subvolume snapshot -r '${SOURCE}.tmp' '$SOURCE' >/dev/null;
-btrfs subvolume delete '${SOURCE}.tmp' >/dev/null;
+btrfs subvolume snapshot -r '${SOURCE}.tmp_$PID' '$SOURCE' >/dev/null;
+btrfs subvolume delete '${SOURCE}.tmp_$PID' >/dev/null;
 HERE
+}
+
+measure_lock() {
+    if [ ! -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
+        mkdir "$SNAZZER_MEAS_LOCK_DIR"
+        echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
+        return
+    elif [ ! -f "$SNAZZER_MEAS_LOCK_DIR/pid" ]; then
+        echo "ERROR: $SNAZZER_MEAS_LOCK_DIR exists without pidfile 'pid'" >&2
+        echo "  Please report this to the author and/or remove the dir" >&2
+        exit 7
+    fi
+    OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
+    if ps --pid=$OLD_PID >/dev/null; then
+        echo "ERROR: Another snazzer --measure invocation already running" >&2
+        echo "  $SNAZZER_MEAS_LOCK_DIR/pid $OLD_PID already running" >&2
+        exit 7
+    else
+        echo "WARN: Previous snazzer --measure invocation with PID $OLD_PID" >&2
+        echo "  exited ungracefully; $SNAZZER_MEAS_LOCK_DIR/pid is stale." >&2
+        LIST=$(find / -path "*/.snapshotz/*.tmp_$OLD_PID" -exec \
+            echo btrfs subvolume delete \'{}\' \;)
+        if [ -z "$LIST" ]; then
+            echo "  removing:"
+            rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
+            rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
+        else
+            echo "ERROR: Temporary snapshots left behind by PID $OLD_PID" >&2
+            echo "  You may wish to clean this up manually by running:"
+            echo "$LIST"
+            exit 7
+        fi
+    fi
+}
+
+measure_unlock() {
+    rm "$SNAZZER_MEAS_LOCK_DIR/pid"
+    rmdir "$SNAZZER_MEAS_LOCK_DIR"
 }
 
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
@@ -272,15 +312,7 @@ measure() {
     fi"
     eval "cd '$SHOTZ'"
     assert_subvolume "."
-    if [ -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
-        echo "ERROR: Another snazzer --measure invocation is already running" >&2
-        echo "\t$SNAZZER_MEAS_LOCK_DIR can be removed if this is not true" >&2
-        echo "\tPID: $(cat "$SNAZZER_MEAS_LOCK_DIR/pid")" >&2
-        exit 7
-    else
-        mkdir "$SNAZZER_MEAS_LOCK_DIR"
-        echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
-    fi
+    measure_lock
     if [ "$DO_FORCE" = "1" ]; then
         TO_MEAS=$(find . -maxdepth 1 -mindepth 1 -type d | sed "s/'/'\\''/g")
     else
@@ -301,8 +333,7 @@ measure() {
             rm "$SNAP_SH"
         fi
     done
-    rm "$SNAZZER_MEAS_LOCK_DIR/pid"
-    rmdir "$SNAZZER_MEAS_LOCK_DIR"
+    measure_unlock
     eval "cd '$OLD_DIR'"
 }
 
