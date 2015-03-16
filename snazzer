@@ -111,9 +111,12 @@ list_subvolumes() {
 # subvols later on.
 # SMELL: what if a subvol is mounted some place other than its path name?
 list_btrfs_mountpoints() {
+    EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     mount -t btrfs | sed -n 's/^\(.*\) on \(.*\).*/\1/p' | sort | uniq | \
     xargs --no-run-if-empty -I {} sh -c \
-    'mount -t btrfs| grep "{}" |head -n 1 |sed -n "s/^.* on \(.*\) type.*/\1/p"'
+ 'mount -t btrfs| grep "{}" |head -n 1 |sed -n "s/^.* on \(.*\) type.*/\1/p"' |\
+    grep -v -f "$EXCL_FILE"
+    rm "$EXCL_FILE"
 }
 
 get_subvol_path() {
