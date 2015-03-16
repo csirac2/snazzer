@@ -249,7 +249,6 @@ printf "\t$SOURCE\n"
 btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp' >/dev/null;
 cd '${SOURCE}.tmp';
 snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
-snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
 cd ..
 btrfs subvolume delete '${SOURCE}' >/dev/null;
 btrfs subvolume snapshot -r '${SOURCE}.tmp' '$SOURCE' >/dev/null;
