@@ -3,6 +3,8 @@ set -e
 SNAZZER_VERSION=0.1
 SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
+SNAZZER_SNAPSHOTZ_PERMS=0700
+SNAZZER_SNAPSHOTZ_EACH_PERMS=0500
 if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
     # Keep in sync with the POD!
     SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
@@ -158,6 +160,7 @@ $SNAZZER_MEASUREMENTS_FILE
 ${SNAZZER_MEASUREMENTS_FILE}.exclude
 $( eval "cd '$SOURCE'"; snapshot_exclude_subvols . | sed -e 's|[`$]|\\&|g' ; eval "cd '$OLD_PWD'")
 EXCL
+chmod $SNAZZER_SNAPSHOTZ_EACH_PERMS '${SNAP}.tmp_$PID'
 btrfs subvolume snapshot -r '${SNAP}.tmp_$PID' '$SNAP' >/dev/null;
 btrfs subvolume delete '${SNAP}.tmp_$PID' >/dev/null;
 HERE
@@ -176,7 +179,7 @@ snapshot() {
     else
         DEST="$SOURCE/.snapshotz"
     fi
-    eval "mkdir -p '$DEST'"
+    eval "mkdir -p '$DEST' && chmod $SNAZZER_SNAPSHOTZ_PERMS '$DEST'"
     SNAP="$DEST/$DATE"
     if [ "$DRY_RUN" = "1" ]; then
         build_snapshot_cmd "$SOURCE" "$SNAP"
