@@ -5,6 +5,7 @@ SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 SNAZZER_SNAPSHOTZ_EACH_PERMS=0500
+SNAZZER_MEASUREMENTS_FILE_PERMS=0600
 if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
     # Keep in sync with the POD!
     SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
@@ -155,12 +156,15 @@ build_snapshot_cmd() {
 #!/bin/sh
 set -e
 btrfs subvolume snapshot '$SOURCE' '${SNAP}.tmp_$PID';
+chmod $SNAZZER_SNAPSHOTZ_EACH_PERMS '${SNAP}.tmp_$PID';
+touch '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
+chmod $SNAZZER_MEASUREMENTS_FILE_PERMS \
+    '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
 cat <<EXCL > '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
 $SNAZZER_MEASUREMENTS_FILE
 ${SNAZZER_MEASUREMENTS_FILE}.exclude
 $( eval "cd '$SOURCE'"; snapshot_exclude_subvols . | sed -e 's|[`$]|\\&|g' ; eval "cd '$OLD_PWD'")
 EXCL
-chmod $SNAZZER_SNAPSHOTZ_EACH_PERMS '${SNAP}.tmp_$PID'
 btrfs subvolume snapshot -r '${SNAP}.tmp_$PID' '$SNAP' >/dev/null;
 btrfs subvolume delete '${SNAP}.tmp_$PID' >/dev/null;
 HERE
@@ -168,8 +172,8 @@ HERE
 
 snapshot() {
     SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
-    if [ -f "$SOURCE/${SNAZZER_MEASUREMENTS_FILE}_exclude" ]; then
-        echo "ERROR: $SOURCE/${SNAZZER_MEASUREMENTS_FILE}_exclude" >&2
+    if [ -f "$SOURCE/${SNAZZER_MEASUREMENTS_FILE}.exclude" ]; then
+        echo "ERROR: $SOURCE/${SNAZZER_MEASUREMENTS_FILE}.exclude" >&2
         printf "\talready exists in source subvolume, cannot continue\n" >&2
         exit 6
     fi
@@ -253,6 +257,8 @@ set -e
 printf "\t$SOURCE\n"
 btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp_$PID' >/dev/null;
 cd '${SOURCE}.tmp_$PID';
+touch "$SNAZZER_MEASUREMENTS_FILE";
+chmod $SNAZZER_MEASUREMENTS_FILE_PERMS "$SNAZZER_MEASUREMENTS_FILE";
 snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
 cd ..
 btrfs subvolume delete '${SOURCE}' >/dev/null;
