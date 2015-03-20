@@ -2,11 +2,14 @@
 
 set -e
 SNAZZER_VERSION=0.1
-if [ "$SNAZZER_USE_UTC" = "1" ]; then
-    DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
-else
-    DATE=$(date +"%Y-%m-%dT%H%M%S%z")
-fi
+
+get_date() {
+    if [ "$SNAZZER_USE_UTC" = "1" ]; then
+        date -u +"%Y-%m-%dT%H%M%SZ"
+    else
+        date +"%Y-%m-%dT%H%M%S%z"
+    fi
+}
 
 # Keep in sync with the POD!
 DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
@@ -19,7 +22,7 @@ if [ -z "$SNAZZER_MEASUREMENTS_FILE" ]; then
 fi
 
 host_datetime() {
-    echo "> on $(hostname) at $DATE, $1:"
+    echo "> on $(hostname) at $(get_date), $1:"
 }
 
 build_exclude_switch() {
