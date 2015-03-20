@@ -1,0 +1,222 @@
+#!/bin/sh
+set -e
+SNAZZER_VERSION=0.1
+SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
+
+list_snapshots() {
+    HOST="$1"
+    shift
+    ssh "$HOST" "sudo snazzer --list-snapshots $@"
+}
+
+build_send_cmd() {
+    HOST="$1"
+    SUBVOL_PATH="$2"
+    # executed remotely after one round of interpolation, so escape twice:
+    SNAP_PATH=$(echo "$3" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
+    cat <<HERE
+ssh '$HOST' 'sudo btrfs send '\''$SNAP_PATH'\''' | \\
+    sudo btrfs receive '$SUBVOL_PATH/.snapshotz'
+HERE
+}
+
+build_send_parent_cmd() {
+    HOST="$1"
+    SUBVOL_PATH=$(echo "$2" | sed "s|'|'\\\\''|g")
+    # executed remotely after one round of interpolation, so escape twice:
+    SNAP_PATH=$(echo "$3" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH=$(echo "$4" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g" )
+    cat <<HERE
+ssh '$HOST' 'sudo btrfs send '\''$SNAP_PATH'\'' \\
+    -p '\''$SNAP_PARENT_PATH'\''' | \\
+    sudo btrfs receive '$SUBVOL_PATH/.snapshotz'
+HERE
+}
+
+create_subvol() {
+    DIR="$2"
+    cat <<HERE | sh
+sudo btrfs subvolume create '$DIR'
+mkdir -vp '$DIR/.snapshotz'
+HERE
+}
+
+#SMELL: Assumes --list-snapshots lines are grouped by subvol, ordered by date
+#FIXME: Subvols containing mixed timezone snapshots will use suboptimal parents
+do_host() {
+    HOST="$1"
+    # Last snapshot seen in the local target fs
+    HAVE_SNAP=
+    # HAVE_SNAP needs to be reset foreach subvol, so track/detect subvol change
+    LAST_SUBVOL=
+    shift
+    list_snapshots "$HOST" "$@" | while read SNAPSHOT
+    do
+        SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/\(.*\)/\.snapshotz/.*|\1|g')
+        SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g' )
+        if [ ! -d "$SUBVOL_PATH" ]; then
+            create_subvol "$SUBVOL_PATH"
+        fi
+        if [ -z "$LAST_SUBVOL" ]; then
+            LAST_SUBVOL="$SUBVOL_PATH"
+        elif [ "$LAST_SUBVOL" != "$SUBVOL_PATH" ]; then
+            HAVE_SNAP=
+        fi
+        if [ ! -d "$SNAP_PATH" ]; then
+            if [ -z "$HAVE_SNAP" ]; then
+                build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | /bin/sh
+            else
+                build_send_parent_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$HAVE_SNAP" | /bin/sh
+            fi
+        fi
+        HAVE_SNAP="$SNAP_PATH"
+        LAST_SUBVOL="$SUBVOL_PATH"
+    done
+}
+DRY_RUN=0
+
+while [ "$(echo "$1" | grep -c "^-")" != 0 ]
+do
+    case "$1" in
+        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+             --man-markdown )
+             cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+                 exit ;;
+        -d | --dry-run ) DRY_RUN=1; ;;
+        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+    esac
+    shift
+done
+
+if [ -z "$1" -a "$DO_ALL" != "1" ]; then
+    pod2usage -exit 0 "$0"
+    echo "ERROR: Missing argument" >&2
+    exit 1
+elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
+    pod2usage -exit 0 "$0"
+    echo "ERROR: --force and --dry-run are incompatible" >&2
+    exit 1
+fi
+
+do_host "$@"
+
+exit
+
+__END__
+=head1 NAME
+
+snazzer-receive - receive remote btrfs snapshots to current working dir
+
+=head1 SYNOPSIS
+
+  snazzer-receive hostname [--dry-run] --all [/path/to/btrfs/mountpoint/on/host]
+
+  snazzer-receive hostname [--dry-run] [/remote/subvol1 [/remote/subvol2 [..]]]
+
+=head1 DESCRIPTION
+
+First, B<snazzer-receive> obtains a complete list of snapshots on the remote
+host. This is done by processing the first positional argument as the ssh
+hostname to use, and then all subsequent arguments are appended verbatim to a
+C<snazzer --list-snapshots> invocation run on the remote host.
+
+B<snazzer-receive> then iterates through this list of snapshots, recreating a
+filesystem similar to that of the remote host's by creating subvolumes and
+C<.snapshotz> directories where necessary. Missing snapshots are instantiated
+directly with C<btrfs send> and C<btrfs receive>, using C<btrfs send -p [parent]>
+where possible to reduce transport overhead of incremental snapshots.
+
+NB: Whilst a given C<snazzer --list-snapshots> invocation may span multiple
+separate btrfs filesystems on the remote host, B<snazzer-receive> only creates
+subvolumes in a single local btrfs filesystem at the current working directory.
+The end result should be a directory tree containing snapshots under .snapshotz
+directories just as they would be laid out on the remote host.
+
+=head1 OPTIONS
+
+=over
+
+=item B<--dry-run>: print rather than execute commands that would be run
+
+=item B<--help>: Brief help message
+
+=item B<--man>: Full documentation
+
+=item B<--man-roff>: Full documentation as *roff output, Eg:
+
+    snazzer --man-roff | nroff -man
+
+=item B<--man-markdown>: Full documentation as markdown output, Eg:
+
+    snazzer --man-markdown > snazzer-manpage.md
+
+=back
+
+=head1 ENVIRONMENT
+
+=over
+
+=item * SNAZZER_RECEIVE_DESTINATION
+
+Path under which to create and maintain btrfs subvolumes of remote filesystems.
+
+=back
+
+=head1 BUGS AND LIMITATIONS
+
+=over
+
+=back
+
+=head1 EXIT STATUS
+
+B<snazzer> will abort with an error message printed to STDERR and non-zero exit
+status under the following conditions:
+
+=over
+
+=back
+
+=head1 SEE ALSO
+
+snazzer, snazzer-measure, snazzer-prune-candidates
+
+=head1 AUTHOR
+
+Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+=cut
