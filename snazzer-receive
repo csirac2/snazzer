@@ -2,6 +2,7 @@
 set -e
 SNAZZER_VERSION=0.1
 SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
+SNAZZER_SNAPSHOTZ_PERMS=0755
 
 list_snapshots() {
     HOST="$1"
@@ -15,20 +16,21 @@ build_send_cmd() {
     # executed remotely after one round of interpolation, so escape twice:
     SNAP_PATH=$(echo "$3" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
     SNAP_PARENT_PATH=$(echo "$4" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g" )
+    SNAP_NAME=$(echo "$SNAP_PATH" | sed "s|^.*/||g")
     PARENT_SWITCH=""
     if [ -n "$SNAP_PARENT_PATH" ]; then
         PARENT_SWITCH="-p '\\''$SNAP_PARENT_PATH'\\''" 
     fi
     cat <<HERE
-sudo mkdir '$SUBVOL_PATH/.snapshotz/current' && \
+sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS '$SUBVOL_PATH/.snapshotz/current'
 echo -n "  "
 ssh '$HOST' 'sudo btrfs send '\''$SNAP_PATH'\'' $PARENT_SWITCH' 2>/dev/null | \\
-    sudo btrfs receive '$SUBVOL_PATH/.snapshotz/current' && \
-    sudo btrfs subvolume snapshot -r '$SUBVOL_PATH/.snapshotz/current/'* \
-        '$SUBVOL_PATH/.snapshotz/' >/dev/null && \
-    sudo btrfs subvolume delete '$SUBVOL_PATH/.snapshotz/current/'* \
-        >/dev/null && \
-    sudo rmdir '$SUBVOL_PATH/.snapshotz/current'
+sudo btrfs receive '$SUBVOL_PATH/.snapshotz/current'
+sudo btrfs subvolume snapshot -r '$SUBVOL_PATH/.snapshotz/current/$SNAP_NAME' \
+    '$SUBVOL_PATH/.snapshotz/' >/dev/null
+sudo btrfs subvolume delete '$SUBVOL_PATH/.snapshotz/current/$SNAP_NAME' \
+    >/dev/null
+sudo rmdir '$SUBVOL_PATH/.snapshotz/current'
 HERE
 }
 
@@ -40,7 +42,7 @@ create_subvol() {
     fi
     cat <<HERE | /bin/sh -e
 sudo btrfs subvolume create '$DIR' && \
-sudo mkdir -vp '$DIR/.snapshotz'
+sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp '$DIR/.snapshotz'
 HERE
 }
 
@@ -55,98 +57,102 @@ is_subvol() {
     fi
 }
 
+do_subvolume() {
+    HOST="$1"
+    SUBVOL="$2"
+    if [ -z "$SUBVOL" ]; then
+        SUBVOL_PATH="."
+    else
+        SUBVOL_PATH="$SUBVOL"
+    fi
+    SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
+    echo "subvolume '$SUBVOL_PATH':"
+    if [ -d "$SUBVOL_PATH/.snapshotz/current" ]; then
+        cat <<HERE >&2
+
+ERROR: '$SUBVOL_PATH_ESC/.snapshotz/current' exists. Another instance is already
+running, or a previous invocation was interrupted. If you are sure no other
+instances are already running, remove this directory and snapshots under it:
+
+btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/current'/*
+rmdir '$SUBVOL_PATH_ESC/.snapshotz/current'
+HERE
+        exit 2
+    fi
+    if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
+        create_subvol "$SUBVOL_PATH"
+    fi
+    if [ ! -d "$SUBVOL_PATH/.snapshotz" ]; then
+        eval "sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+            '$SUBVOL_PATH_ESC/.snapshotz'"
+    fi
+    # Last snapshot seen in the local target fs
+    PREV_SNAP=
+    SNAPSHOTS=$(eval "list_snapshots '$HOST' '/$SUBVOL_PATH_ESC'")
+    SNAP_WANT=$(echo "$SNAPSHOTS" | snazzer-prune-candidates --invert)
+    NUM_WANT=$(echo "$SNAP_WANT" | wc -l | cut -d ' ' -f 1)
+    NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
+    # SMELL: that expr errors when the answer is zero, is why sh scripting sucks
+    NUM_PRUN=$(expr $NUM_SNAP - $NUM_WANT || true)
+    NUM_RECV=0
+    NUM_SKIP=0
+    printf "$SNAP_WANT\n<<<EOF>>>\n" | while read SNAPSHOT
+    do
+        if [ "$SNAPSHOT" = "<<<EOF>>>" ]; then
+            echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
+            echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
+        else
+            SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+            SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
+            if [ -z "$SUBVOL_PATH" ]; then
+                SUBVOL_PATH="."
+            fi
+            if [ -d "$SNAP_PATH" ]; then
+                NUM_SKIP=$(expr $NUM_SKIP + 1)
+            else
+                NUM_RECV=$(expr $NUM_RECV + 1)
+                CMD="/bin/sh -e"
+                if [ "$DRY_RUN" != "0" ]; then
+                    CMD="cat"
+                fi
+                if [ -z "$PREV_SNAP" ]; then
+                    build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | $CMD
+                else
+                    build_send_cmd \
+                        "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$PREV_SNAP" | $CMD
+                fi
+            fi
+            PREV_SNAP="$SNAP_PATH"
+        fi
+    done
+}
+
 #SMELL: Assumes --list-snapshots lines are grouped by subvol, ordered by date
 #FIXME: Subvols containing mixed timezone snapshots will use suboptimal parents
 do_host() {
     HOST="$1"
-    # Last snapshot seen in the local target fs (for this subvol)
-    PREV_SNAP=
-    # PREV_SNAP needs to be reset foreach subvol, so track/detect subvol change
-    PREV_SUBVOL=
     NUM_SUBVOL=0
-    NUM_SNAP=0
-    NUM_RECV=0
-    NUM_SKIP=0
     LIST_ERR=$(mktemp)
-    DID_THIS_SUBVOL=0 # wouldn't need this if we could persist loop state
-    DID_SOME_SUBVOL=0 # wouldn't need this if we could persist loop state
+    LIST_OUT=$(mktemp)
     shift
-    eval "list_snapshots '$HOST' $@ 2>'$LIST_ERR' && echo '<<<EOF>>>'" \
-        | while read SNAPSHOT
-    do
-        # SMELL: This is <<EOF>> thing is dumb, working around the while read
-        # SNAPSHOT block being unable to persist state in the variables above.
-        if [ "$SNAPSHOT" = "<<<EOF>>>" ]; then
-            NUM_SUBVOL=$(expr $NUM_SUBVOL + $DID_SOME_SUBVOL)
-            echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
-            echo "($NUM_SKIP skipped)"
-            echo "Processed $NUM_SUBVOL subvolumes."
-            break
-        fi
-        DID_SOME_SUBVOL=1
-        SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
-        SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
-        if [ -z "$SUBVOL_PATH" ]; then
-            SUBVOL_PATH="."
-        fi
-        if [ -z "$PREV_SUBVOL" ]; then
-            PREV_SUBVOL="$SUBVOL_PATH"
-        elif [ "$PREV_SUBVOL" != "$SUBVOL_PATH" ]; then
-            PREV_SNAP=
-            echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
-            echo "($NUM_SKIP skipped)"
-            NUM_SNAP=0
-            NUM_RECV=0
-            NUM_SKIP=0
-            NUM_SUBVOL=$(expr $NUM_SUBVOL + 1)
-            DID_THIS_SUBVOL=0
-        fi
-        if [ "$DID_THIS_SUBVOL" = "0" ]; then
-            DID_THIS_SUBVOL=1
-            echo "Working on $SUBVOL_PATH:"
-            if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
-                create_subvol "$SUBVOL_PATH"
-            fi
-            if [ ! -d "$SUBVOL_PATH/.snapshotz" ]; then
-                eval "sudo mkdir '$SUBVOL_PATH/.snapshotz'"
-            fi
-            if [ -d "$SUBVOL_PATH/.snapshotz/current" ]; then
-                cat <<HERE >&2
-
-ERROR: $SUBVOL_PATH/.snapshotz/current exists. Another instance is already
-running, or a previous invocation was interrupted. If you are sure no other
-instances are already running, remove this directory and snapshots under it:
-
-btrfs subvolume delete '$SUBVOL_PATH/.snapshotz/current'/*
-rmdir '$SUBVOL_PATH/.snapshotz/current'
-HERE
-                exit 2
-            fi
-        fi
-        if [ -d "$SNAP_PATH" ]; then
-            NUM_SKIP=$(expr $NUM_SKIP + 1)
-        else
-            NUM_RECV=$(expr $NUM_RECV + 1)
-            CMD="/bin/sh -e"
-            if [ "$DRY_RUN" != "0" ]; then
-                CMD="cat"
-            fi
-            if [ -z "$PREV_SNAP" ]; then
-                build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | $CMD
-            else
-                build_send_cmd \
-                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$PREV_SNAP" | $CMD
-            fi
-        fi
-        NUM_SNAP=$(expr $NUM_SNAP + 1)
-        PREV_SNAP="$SNAP_PATH"
-        PREV_SUBVOL="$SUBVOL_PATH"
+    eval "list_snapshots '$HOST' $@ 2>'$LIST_ERR' | \
+        sed 's|^/*\\(.*\\)/\\.snapshotz/.*|\\1|g' |sort | uniq" > "$LIST_OUT"
+    NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
+    # I'd use another foo | while read FOO loop, but you can't nest them in dash
+    I=0
+    while test "$I" -lt "$NUM_SUBVOL"; do
+        I=$(expr $I + 1)
+        SUBVOL=$(head -n $I "$LIST_OUT" | tail -n 1)
+        do_subvolume "$HOST" "$SUBVOL"
     done
+    echo "Processed $NUM_SUBVOL subvolumes."
     if [ -s "$LIST_ERR" ]; then
         echo "  ssh $HOST 'snazzer --list-snapshots $@': $(grep . "$LIST_ERR")"
     fi
+    rm "$LIST_OUT"
     rm "$LIST_ERR"
 }
+
 DRY_RUN=0
 
 while [ "$(echo "$1" | grep -c "^-")" != 0 ]
