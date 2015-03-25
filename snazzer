@@ -215,16 +215,11 @@ prune_shotz_dirs() {
 
 # We can't just use ls --quoting-style=shell feature, this makes
 # snazzer-prune-candidates sad when the last char in a line is '
-newlines2quoted() {
-    echo "$1" | sed "s/'/'\\\\''/g" | sed ":a;N;\$!ba;s/\\n/' '/g" | \
-        sed "s/^/'/g" | sed "s/\$/'/g"
-}
-
 build_prune_cmd() {
-    SUBVOL_SHOTZ_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    shift
+    PRUNE_LIST=$(echo -n "'"; echo -n "$1" | sed "s/'/'\\\\''/g" | \
+        sed ":a;N;\$!ba;s/\\n/' '/g"; echo -n "'")
     cat <<HERE
-btrfs subvolume delete $@
+$SUDO btrfs subvolume delete $PRUNE_LIST
 HERE
 }
 
@@ -241,8 +236,8 @@ prune() {
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
-    NUM_PRUNE=$(echo "$PRUNE_LIST" | wc -l)
-    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | wc -l)
+    NUM_PRUNE=$(echo "$PRUNE_LIST" | grep . | wc -l)
+    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep . | wc -l)
     echo "'$SUBVOL_SHOTZ_ESC': pruning $NUM_PRUNE of $NUM_AVAIL"
     if [ "$NUM_PRUNE" != "0" ]; then
         if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
@@ -254,8 +249,8 @@ prune() {
             exit 5
         fi
         if [ -n "$PRUNE_LIST" ]; then
-            build_prune_cmd "$SUBVOL_SHOTZ" $(newlines2quoted "$PRUNE_LIST") | \
-                $CMD | grep -v 'Transaction commit: none (default)'
+            build_prune_cmd "$PRUNE_LIST" | $CMD | \
+                grep -v 'Transaction commit: none (default)'
         fi
     fi
 }
@@ -305,7 +300,7 @@ HERE
 measure() {
     SUBVOL="$1"
     SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    OLD_PWD=$(pwd)
+    OLD_PWD_ESC=$(pwd | sed "s/'/'\\\\''/g")
     if [ "$SUBVOL" = "/" ]; then
         SUBVOL_SHOTZ="/.snapshotz"
         SUBVOL_SHOTZ_ESC="/.snapshotz"
@@ -354,7 +349,7 @@ measure() {
         echo "  $SNAP_NAME"
         build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME" | $CMD
     done
-    $PREPOST_CMD "cd '$OLD_PWD'"
+    $PREPOST_CMD "cd '$OLD_PWD_ESC'"
     measure_unlock
 }
 
@@ -411,7 +406,7 @@ test_img_write() {
 
 test_img_populate() {
     MNT="$1"
-    OLD_PWD="$(pwd)"
+    OLD_PWD_ESC=$(pwd | sed "s/'/'\\\\''/g")
     cd "$MNT"
     for SUBVOL in srv home etc/secrets var/lib/docker/btrfs var/cache \
         usr/local/src "this is/something with/spaces in it" \
@@ -428,7 +423,7 @@ test_img_populate() {
             test_img_write "${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
         fi
     done
-    cd "$OLD_PWD"
+    eval "cd '$OLD_PWD_ESC'"
 }
 
 test_img_create() {
