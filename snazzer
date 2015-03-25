@@ -668,7 +668,7 @@ the exclude patterns file should only contain "boring" paths. Obvious regex
 characters are escaped, however there are likely many possible hostile path glob
 patterns which will break things.
 
-=item * foo/.snapshotz/.measurements is a work-around to the btrfs atime bug
+=item * .snapshot_measurements.exclude is a work-around to the btrfs atime bug
 
 Snapshots may include empty directories under which some other subvol may have
 existed in the original, snapshotted subvolume. However, btrfs has a bug where

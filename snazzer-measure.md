@@ -5,13 +5,13 @@ along with commands to reproduce or verify data is unchanged
 
 # SYNOPSIS
 
-    snazzer-measure /some/path >> .snapshot_measurements
+    snazzer-measure /some/path >> path_measurements
 
 # DESCRIPTION
 
 Creates reproducable fingerprints of the content under a given directory, along
-with the commands necessary to reproduce the measurement using only standard
-core GNU userland utilities.
+with the commands necessary (relative to a sibling directory of the supplied
+path) to reproduce the measurement using only standard core GNU userland.
 
 The output includes:
 
@@ -44,12 +44,12 @@ The output includes:
         DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
             --detach-sign -"
 
-- SNAZZER\_MEASUREMENTS\_FILE
+- SNAZZER\_MEASUREMENTS\_EXCLUDE\_FILE
 
-    A filename within the measured directory excluded from measurements (changes to
-    this file do not affect results). Default:
+    A filename within the measured directory of a newline-separated list of shell
+    glob patterns to exclude from measurements. Default:
 
-        SNAZZER_MEASUREMENTS_FILE=".snapshot_measurements"
+        SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
 
 - MY\_KEYFILES\_ARE\_INVINCIBLE=1
 

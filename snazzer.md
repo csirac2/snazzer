@@ -23,8 +23,9 @@ Prune all non-excluded subvols on all mounted btrfs filesystems:
 
     snazzer --prune --force --all
 
-Append output of **snazzer-measure** to `.snapshot_measurements` in all
-snapshots of all subvolumes on all mounted btrfs filesytems (slow!):
+Append output of **snazzer-measure** to
+`/path/to/subvol/.snapshotz/.measurements/[isodate]` for all snapshots of all
+subvolumes on all mounted btrfs filesytems (slow!):
 
     snazzer --measure --force --all
 
@@ -47,10 +48,10 @@ Prune only the explicitly named subvols at /srv, /var/log and root:
 mountpoint is omitted, **snazzer** acts on all mounted btrfs filesystems.
 - **--prune**: delete rather than create snapshots. Exactly which are no
 longer needed is **snazzer-prune-candidates**'s role, documented separately
-- **--measure**: append output of **snazzer-measure** to the
-`.snapshot_measurements` file in the root of each snapshot. By default, only
-snapshots which haven't been measured by this hostname are updated - use
-**--force** to measure all snapshots
+- **--measure**: append output of **snazzer-measure** to
+`/path/to/subvol/.snapshotz/.measurements/[isodate]` By default, only snapshots
+which haven't been measured by this hostname are updated - use **--force** to
+measure all snapshots
 - **--force**: required for **--prune** to carry out any pruning operation.
 For **--measure**, this switch overrides the default behaviour of skipping
 snapshots already measured by current hostname
@@ -122,10 +123,8 @@ snapshots already measured by current hostname
     `mkdir`: atimes always return with the current local time, which is obvioulsy
     different from one second to the next. So we have no hope of creating
     reproducible shasums or PGP signatures unless those directories are excluded
-    from our measurements of the snapshot.
-
-    http://comments.gmane.org/gmane.comp.file-systems.btrfs/43452
-    https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
+    from our measurements of the snapshot. See also: 
+    [https://bugzilla.kernel.org/show\_bug.cgi?id=95201](https://bugzilla.kernel.org/show_bug.cgi?id=95201)
 
 # EXIT STATUS
 
@@ -141,8 +140,6 @@ status under the following conditions:
 root, but it already exists in the current subvolume
 - 7. tried to perform snapshot measurements while existing measurements are
 already in progress, check lock dir at /var/run/snazzer-measure.lock
-- 8. detected left-over \*.tmp snapshots in the .snapshotz path. These could
-also indicate that another snazzer operation is currently already running.
 - 9. tried to display man page with a formatter which is not installed
 - 10. missing `snazzer-measure` or `snazzer-prune-candidates` from PATH
 - 11. missing `btrfs` command from PATH
