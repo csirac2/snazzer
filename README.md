@@ -21,7 +21,7 @@ Also viewable online at:
 * https://github.com/csirac2/snazzer/blob/master/snazzer-receive.md
 * https://github.com/csirac2/snazzer/blob/master/snazzer-prune-candidates.md
 
-Generate a test btrfs image and mount it for playing with:
+Generate a test btrfs image and mount it:
 
     snazzer --generate-test-img test.img
     mount test.img /mnt
@@ -31,7 +31,8 @@ Generate a test btrfs image and mount it for playing with:
     # have unneeded snapshots now, prune them:
     snazzer --prune --force --all /mnt
     
-generate .snapshot_measurements reports in each snapshot. Perhaps schedule
+generate measurement reports for each snapshot under
+`/path/to/subvol/.snapshotz/.measurements/[isodate]`. Perhaps schedule
 measurements to run after they've been received on your backup server
 rather than burning up CPU and disk I/O on the original host:
 
@@ -45,34 +46,30 @@ re-measuring snapshots which have already been measured by this host
 
 View the .snapshot_measurements report for one of the snapshots (example only):
 
-    cat /mnt/.snapshotz/2015-03-10T131520+1100/.snapshot_measurements
+    cat /mnt/.snapshotz/.measurements/2015-03-25T100223+1100
 
 Run one of the commands in the report to see if we can reproduce shasum  (example only):
 
-    cd /mnt/.snapshotz/2015-03-10T131520+1100
-    find '.' -xdev -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion \
-    --preserve-permissions --one-file-system -c --warning=file-ignored \
-    --to-stdout --exclude-from="./.snapshot_measurements.exclude" | sha512sum -b
+    OLD=$(pwd); cd '../2015-03-25T100223+1100' && find . -xdev -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions --one-file-system -c --to-stdout --exclude-from '.snapshot_measurements.exclude' | sha512sum -b; cd "$OLD"
 
 Run the gpg signature verification command listed in the report  (example only):
 
-    SIG=$(mktemp) && cat ".snapshot_measurements" | grep -v '/,/' | sed -n \
-    '/> on test123host at 2015-03-10T131547+1100, gpg=/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' \
-    > "$SIG" && find '.' -xdev -print0 | LC_ALL=C sort -z | tar --null -T - \
-    --no-recursion --preserve-permissions --one-file-system -c \
-    --warning=file-ignored --to-stdout \
-    --exclude-from="./.snapshot_measurements.exclude" | gpg2 --verify "$SIG" -
+    OLD=$(pwd); SIG=$(mktemp) && cat 2015-03-25T100223+1100 | grep -v '/,/' | \
+    sed -n '/> on schwing at 2015-03-25T100233+0000, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' \
+    > $SIG && cd '../2015-03-25T100223+1100' && find . -xdev -print0 | \
+    LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions \
+    --one-file-system -c --to-stdout --exclude-from \
+    '.snapshot_measurements.exclude' | gpg2 --verify $SIG -; cd "$OLD"
 
 Some observations:
 * Yes, the verification commands are huge and ugly, but eminently reproducible.
 * The effort we go to list subvolumes in the .snapshot_measurments.exclude file
-  is due to a btrfs bug which seems to always give a different bogus atime on
+  is due to a btrfs bug which seems to awalys give a different bogus atime on
   any empty directory within a snapshot that happened to be a btrfs subvolume.
   Plain old empty directories created with mkdir have static/stable atimes.
   This bug prevents us from ever getting a repeatable sha512sum or PGP signature
-  unless we exclude those directories from measurements in the snapshot. Refer
-  to http://comments.gmane.org/gmane.comp.file-systems.btrfs/43452 and
-  https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
+  unless we exclude those directories from measurements in the snapshot. See
+  https://bugzilla.kernel.org/buglist.cgi?quicksearch=btrfs%20atime&list_id=527771
 
 Inspiration
 -----------
