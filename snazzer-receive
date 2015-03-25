@@ -4,52 +4,72 @@ SNAZZER_VERSION=0.1
 SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_SNAPSHOTZ_PERMS=0755
 
+if [ "$(id -u)" = "0" ]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
+
 list_snapshots() {
     HOST="$1"
+    ARGS=
     shift
-    ssh "$HOST" "sudo snazzer --list-snapshots $@"
+    for I in 1 2 3 4 5 6 7 8 9; do
+        if [ -n "$1" ]; then
+            ARGS=$(echo -n "$ARGS "; echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "'" )
+            shift
+        fi
+    done
+    cat <<HERE | /bin/sh -e
+ssh "$HOST" '$SUDO snazzer --list-snapshots $(echo "$ARGS" | sed "s|'|'\\\\''|g")'
+HERE
 }
 
 build_send_cmd() {
     HOST="$1"
-    SUBVOL_PATH=$(echo "$2" | sed "s|'|'\\\\''|g")
+    SUBVOL_PATH_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
     # executed remotely after one round of interpolation, so escape twice:
-    SNAP_PATH=$(echo "$3" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH=$(echo "$4" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g" )
-    SNAP_NAME=$(echo "$SNAP_PATH" | sed "s|^.*/||g")
+    SNAP_PATH=$(echo "$3")
+    SNAP_PATH_ESC_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH_ESC_ESC=$(echo "$4" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g" )
+    SNAP_NAME=$(basename "$SNAP_PATH")
     PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH" ]; then
-        PARENT_SWITCH="-p '\\''$SNAP_PARENT_PATH'\\''" 
+    if [ -n "$SNAP_PARENT_PATH_ESC_ESC" ]; then
+        PARENT_SWITCH="-p '\\''$SNAP_PARENT_PATH_ESC_ESC'\\''" 
     fi
     cat <<HERE
-sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS '$SUBVOL_PATH/.snapshotz/current'
+$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+    '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
 echo -n "  "
-ssh '$HOST' 'sudo btrfs send '\''$SNAP_PATH'\'' $PARENT_SWITCH' 2>/dev/null | \\
-sudo btrfs receive '$SUBVOL_PATH/.snapshotz/current'
-sudo btrfs subvolume snapshot -r '$SUBVOL_PATH/.snapshotz/current/$SNAP_NAME' \
-    '$SUBVOL_PATH/.snapshotz/' >/dev/null
-sudo btrfs subvolume delete '$SUBVOL_PATH/.snapshotz/current/$SNAP_NAME' \
-    >/dev/null
-sudo rmdir '$SUBVOL_PATH/.snapshotz/current'
+ssh '$HOST' '$SUDO btrfs send '\''$SNAP_PATH_ESC_ESC'\'' $PARENT_SWITCH' \
+    2>/dev/null | $SUDO btrfs receive '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
+$SUDO btrfs subvolume snapshot -r \
+    '$SUBVOL_PATH_ESC/.snapshotz/incomplete/$SNAP_NAME' \
+    '$SUBVOL_PATH_ESC/.snapshotz/' >/dev/null
+$SUDO btrfs subvolume delete \
+    '$SUBVOL_PATH_ESC/.snapshotz/incomplete/$SNAP_NAME' >/dev/null
+$SUDO rmdir '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
 HERE
 }
 
 create_subvol() {
-    DIR=$(echo "$1" | sed "s|'|'\\\\''|g")
-    PARENT=$(eval "dirname '$DIR'" | sed "s|'|'\\\\''|g")
-    if [ "$DIR"!="$PARENT" ]; then
-        eval "sudo mkdir -vp '$PARENT'"
+    DIR="$1"
+    DIR_ESC=$(echo "$DIR" | sed "s|'|'\\\\''|g")
+    PARENT=$(dirname "$DIR")
+    PARENT_ESC=$(echo "$PARENT" | sed "s|'|'\\\\''|g")
+    if [ "$DIR" != "$PARENT" ]; then
+        eval "$SUDO mkdir -vp '$PARENT_ESC'"
     fi
     cat <<HERE | /bin/sh -e
-sudo btrfs subvolume create '$DIR' && \
-sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp '$DIR/.snapshotz'
+$SUDO btrfs subvolume create '$DIR_ESC' && \
+$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp '$DIR_ESC/.snapshotz'
 HERE
 }
 
 is_subvol() {
-    DIR=$(echo "$1" | sed "s|'|'\\\\''|g")
+    DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
 
-    if [ "$(eval "sudo btrfs subvolume show '$DIR' 2>&1 || echo ERROR" | \
+    if [ "$(eval "$SUDO btrfs subvolume show '$DIR_ESC' 2>&1 || echo ERROR" | \
         grep -c '^ERROR' || true)" = "0" ]; then
         echo 1
     else
@@ -66,29 +86,30 @@ do_subvolume() {
         SUBVOL_PATH="$SUBVOL"
     fi
     SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
-    echo "subvolume '$SUBVOL_PATH':"
-    if [ -d "$SUBVOL_PATH/.snapshotz/current" ]; then
+    echo "subvolume '$SUBVOL_PATH_ESC':"
+    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/incomplete'"; then
         cat <<HERE >&2
 
-ERROR: '$SUBVOL_PATH_ESC/.snapshotz/current' exists. Another instance is already
+ERROR: '$SUBVOL_PATH_ESC/.snapshotz/incomplete' exists. Another instance is already
 running, or a previous invocation was interrupted. If you are sure no other
 instances are already running, remove this directory and snapshots under it:
 
-btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/current'/*
-rmdir '$SUBVOL_PATH_ESC/.snapshotz/current'
+btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/incomplete'/*
+rmdir '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
 HERE
         exit 2
     fi
     if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
         create_subvol "$SUBVOL_PATH"
     fi
-    if [ ! -d "$SUBVOL_PATH/.snapshotz" ]; then
-        eval "sudo mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+    if ! eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz'"; then
+        eval "$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
             '$SUBVOL_PATH_ESC/.snapshotz'"
     fi
     # Last snapshot seen in the local target fs
     PREV_SNAP=
     SNAPSHOTS=$(eval "list_snapshots '$HOST' '/$SUBVOL_PATH_ESC'")
+    echo "SNAPSHOTS: $SNAPSHOTS"
     SNAP_WANT=$(echo "$SNAPSHOTS" | snazzer-prune-candidates --invert)
     NUM_WANT=$(echo "$SNAP_WANT" | wc -l | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
@@ -96,7 +117,8 @@ HERE
     NUM_PRUN=$(expr $NUM_SNAP - $NUM_WANT || true)
     NUM_RECV=0
     NUM_SKIP=0
-    printf "$SNAP_WANT\n<<<EOF>>>\n" | while read SNAPSHOT
+    echo "$SNAP_WANT
+<<<EOF>>>" | while read SNAPSHOT
     do
         if [ "$SNAPSHOT" = "<<<EOF>>>" ]; then
             echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
@@ -107,7 +129,7 @@ HERE
             if [ -z "$SUBVOL_PATH" ]; then
                 SUBVOL_PATH="."
             fi
-            if [ -d "$SNAP_PATH" ]; then
+            if eval "$SUDO test -e '$SNAP_PATH'"; then
                 NUM_SKIP=$(expr $NUM_SKIP + 1)
             else
                 NUM_RECV=$(expr $NUM_RECV + 1)
@@ -136,7 +158,7 @@ do_host() {
     LIST_OUT=$(mktemp)
     shift
     eval "list_snapshots '$HOST' $@ 2>'$LIST_ERR' | \
-        sed 's|^/*\\(.*\\)/\\.snapshotz/.*|\\1|g' |sort | uniq" > "$LIST_OUT"
+        sed 's|^/*\\(.*\\)/\\.snapshotz/.*|\\1|g' | sort | uniq" > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
     # I'd use another foo | while read FOO loop, but you can't nest them in dash
     I=0
@@ -280,7 +302,7 @@ non-zero exit status under the following conditions:
 
 =item 1. invalid arguments
 
-=item 2. C<.snapshotz/current> already exists at a given destination subvolume
+=item 2. C<.snapshotz/incomplete> already exists at a given destination subvolume
 
 =item 9. tried to display man page with a formatter which is not installed
 

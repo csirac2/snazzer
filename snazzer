@@ -34,7 +34,7 @@ HERE
     cat <<HERE >&2
 WARN: '$MISSING_SUBVOLS_EXCL_FILE' missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
 fi
 
 assert_mountpoint() {
