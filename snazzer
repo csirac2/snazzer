@@ -22,7 +22,7 @@ if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
     SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 fi
 
-if [ ! -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+if ! $SUDO test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
     MISSING_SUBVOLS_EXCL_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE"
     SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
     cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
@@ -64,7 +64,7 @@ glob2grep_file() {
     FILE_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     OUT=$(mktemp)
 
-    eval "cat '$FILE_ESC'" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
+    eval "$SUDO cat '$FILE_ESC'" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
 
     echo "$OUT"
 }
@@ -168,7 +168,7 @@ build_snapshot_cmd() {
 
     # The stdin/out cat below, is in case we're leaning on sudo...
     cat <<HERE
-cat <<EXCL | $SUDO cat - > '$EXCL_FILE_ESC'
+cat <<EXCL | $SUDO tee '$EXCL_FILE_ESC' >/dev/null
 $( eval "list_excluded_subvols '$SUBVOL_ESC'" | sed -e 's|[`$]|\\&|g')
 EXCL
 $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
@@ -255,14 +255,14 @@ prune() {
 }
 
 measure_lock() {
-    if [ ! -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
+    if ! $SUDO test -e "$SNAZZER_MEAS_LOCK_DIR"; then
         true
-    elif [ ! -f "$SNAZZER_MEAS_LOCK_DIR/pid" ]; then
+    elif ! $SUDO test -e "$SNAZZER_MEAS_LOCK_DIR/pid"; then
         echo "ERROR: $SNAZZER_MEAS_LOCK_DIR exists without pidfile 'pid'" >&2
         echo "  Please report this to the author and/or remove the dir" >&2
         exit 7
     else
-        OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
+        OLD_PID=$($SUDO cat "$SNAZZER_MEAS_LOCK_DIR/pid")
         if ps --pid=$OLD_PID >/dev/null; then
             echo "ERROR: A snazzer --measure invocation is already running" >&2
             echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
@@ -272,12 +272,12 @@ measure_lock() {
 WARN: Previous snazzer --measure invocation PID $OLD_PID exited ungracefully;
 $SNAZZER_MEAS_LOCK_DIR/pid stale
 HERE
-            rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
-            rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
+            $SUDO rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
+            $SUDO rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
         fi
     fi
-    mkdir "$SNAZZER_MEAS_LOCK_DIR"
-    echo "$$" > "$SNAZZER_MEAS_LOCK_DIR/pid"
+    $SUDO mkdir "$SNAZZER_MEAS_LOCK_DIR"
+    echo "$$" | $SUDO tee "$SNAZZER_MEAS_LOCK_DIR/pid" >/dev/null
 }
 
 measure_unlock() {
@@ -310,7 +310,7 @@ measure() {
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     measure_lock
-    if [ ! -d "$SUBVOL_SHOTZ/.measurements" ]; then
+    if ! eval "$SUDO test -e '$SUBVOL_SHOTZ_ESC/.measurements'"; then
         eval "$SUDO mkdir '$SUBVOL_SHOTZ_ESC/.measurements'"
     fi
     SNAP_LIST_AVAIL=$(eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'")
@@ -379,13 +379,13 @@ do_multiple() {
                         ;;
             'list-snapshots')
                         if [ "$SUBVOL" = "/" ]; then
-                            btrfs subvolume list -o "$SUBVOL" | \
+                            $SUDO btrfs subvolume list -o "$SUBVOL" | \
                                 grep '\.snapshotz' | \
                                 sed -n "s|.*path .*\.snapshotz/\(.*\)|/.snapshotz/\1|p"
                         else
                             MOUNTPOINT=$(echo "$SUBVOL" | \
                                 sed 's|[&*$.^\|]|\\&|g')
-                            btrfs subvolume list -o "$SUBVOL" | \
+                            $SUDO btrfs subvolume list -o "$SUBVOL" | \
                                 grep '\.snapshotz' | \
                                 sed -n "s|^.*path .*\.snapshotz/\(.*\)|$MOUNTPOINT/\.snapshotz/\1|p"
                         fi
