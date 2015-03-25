@@ -44,16 +44,18 @@ re-measuring snapshots which have already been measured by this host
 
     snazzer --measure --all /mnt
 
-View the .snapshot_measurements report for one of the snapshots (example only):
+View the snapshot measurement report for one of the snapshots (example only):
 
     cat /mnt/.snapshotz/.measurements/2015-03-25T100223+1100
 
 Run one of the commands in the report to see if we can reproduce shasum  (example only):
 
+    cd /mnt/.snapshotz/.measurements
     OLD=$(pwd); cd '../2015-03-25T100223+1100' && find . -xdev -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions --one-file-system -c --to-stdout --exclude-from '.snapshot_measurements.exclude' | sha512sum -b; cd "$OLD"
 
 Run the gpg signature verification command listed in the report  (example only):
 
+    cd /mnt/.snapshotz/.measurements
     OLD=$(pwd); SIG=$(mktemp) && cat 2015-03-25T100223+1100 | grep -v '/,/' | \
     sed -n '/> on schwing at 2015-03-25T100233+0000, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' \
     > $SIG && cd '../2015-03-25T100223+1100' && find . -xdev -print0 | \
@@ -63,7 +65,8 @@ Run the gpg signature verification command listed in the report  (example only):
 
 Some observations:
 * Yes, the verification commands are huge and ugly, but eminently reproducible.
-* The effort we go to list subvolumes in the .snapshot_measurments.exclude file
+* The effort we go to maintaining a list subvolumes in the
+  `.snapshot_measurments.exclude` file automatically placed in each snapshot root
   is due to a btrfs bug which seems to awalys give a different bogus atime on
   any empty directory within a snapshot that happened to be a btrfs subvolume.
   Plain old empty directories created with mkdir have static/stable atimes.
