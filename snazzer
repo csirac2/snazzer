@@ -1,110 +1,104 @@
 #!/bin/sh
 set -e
-SNAZZER_VERSION=0.1
-SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
+SNAZZER_VERSION=0.2
 SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
-SNAZZER_SNAPSHOTZ_EACH_PERMS=0500
-SNAZZER_MEASUREMENTS_FILE_PERMS=0600
+
+if [ "$SNAZZER_USE_UTC" = "1" ]; then
+    SNAZZER_DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
+else
+    SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+fi
+if [ "$(id -u)" = "0" ]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
+if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
+    SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
+fi
+# Keep in sync with the POD!
 if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
-    # Keep in sync with the POD!
     SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 fi
 
-if [ "$SNAZZER_USE_UTC" = "1" ]; then
-    DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
-else
-    DATE=$(date +"%Y-%m-%dT%H%M%S%z")
-fi
-
-DEFAULT_MEAS_FILE=".snapshot_measurements"
-
-if [ -z "$SNAZZER_MEASUREMENTS_FILE" ]; then
-    SNAZZER_MEASUREMENTS_FILE="$DEFAULT_MEAS_FILE"
-fi
-
-assert_mountpoint() {
-    FS="$1"
-    if ! mountpoint -q "$FS"; then
-        echo "ERROR: $FS is not a filesystem mountpoint" >&2
-        exit 2
-    fi
-}
-
-assert_subvolume() {
-    SOURCE="$1"
-    if ! eval "btrfs subvolume show '$SOURCE' >/dev/null 2>&1"; then
-        echo "ERROR: $SOURCE is not a btrfs subvolume" >&2
-        exit 3
-    fi
-}
-
-assert_btrfs_tools() {
-    if ! which btrfs >/dev/null; then
-        echo 'ERROR: btrfs command not found' >&2
-        exit 11
-    fi
-}
-
-setup_subvols_exclude() {
-    if [ ! -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
-        SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=1
-        TMP=$(mktemp)
-        cat <<HERE > "$TMP"
+if [ ! -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+    MISSING_SUBVOLS_EXCL_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+    SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
+    cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
 var/cache
 var/lib/docker
 .snapshots
 *secret*
 HERE
-        cat <<HERE >&2
-ERROR: missing '$SNAZZER_SUBVOLS_EXCLUDE_FILE', should contain entries such as:
-$(cat "$TMP")
-
-Using temporary file $TMP containing the above lines for now...
+    cat <<HERE >&2
+WARN: '$MISSING_SUBVOLS_EXCL_FILE' missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    SNAZZER_SUBVOLS_EXCLUDE_FILE="$TMP"
+    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+fi
+
+assert_mountpoint() {
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    if ! eval "mountpoint -q '$DIR_ESC'"; then
+        echo "ERROR: '$DIR_ESC' is not a filesystem mountpoint" >&2
+        exit 2
+    fi
+}
+
+assert_subvolume() {
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    if ! eval "$SUDO btrfs subvolume show '$DIR_ESC' >/dev/null 2>&1"; then
+        echo "ERROR: '$DIR_ESC' is not a btrfs subvolume" >&2
+        exit 3
+    fi
+}
+
+assert_btrfs_tools() {
+    if ! $SUDO btrfs subvolume snapshot --help >/dev/null; then
+        echo 'ERROR: btrfs command not found' >&2
+        exit 11
     fi
 }
 
 glob2grep_file() {
-    FILE="$1"
+    FILE_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     OUT=$(mktemp)
 
-    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' > "$OUT"
+    eval "cat '$FILE_ESC'" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
 
     echo "$OUT"
 }
 
-list_subvolumes_excluded() {
-    FS="$1"
-    NUM=$(list_subvolumes "$FS" 1 | wc -l)
-
-    if [ "$NUM" != "0" ]; then
-        echo "" >&2
-        echo "Excluded $NUM subvolumes" >&2
+list_subvolumes() {
+    DIR="$1"
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    DO_INVERT="$2"
+    if [ "$DO_INVERT" = "--excluded" ]; then
+        GREP="grep"
+    else
+        GREP="grep -v"
     fi
+    assert_mountpoint "$DIR"
+    if [ "$DIR" != "/" ]; then
+            DIR="$DIR/"
+    fi
+    EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
+    eval "$SUDO btrfs subvolume list -ot '$DIR_ESC'" | tail -n+3 | \
+        $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | awk '{ print $4 }' | \
+        while read SUBVOL; do
+        echo "${DIR}$SUBVOL"
+    done
+    rm "$EXCL_FILE"
 }
 
-list_subvolumes() {
-    FS="$1"
-    INV="$2"
-    if [ -z "$INV" ]; then
-        INV=" -v "
-    else
-        INV=
+report_subvols_excluded() {
+    DIR="$1"
+    NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
+
+    if [ "$NUM" != "0" ]; then
+        echo ""
+        echo "$NUM subvolumes excluded by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
     fi
-    assert_mountpoint "$FS"
-    EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
-    if [ "$FS" = "/" ]; then
-        btrfs subvolume list -o "$FS" | \
-            grep $INV -f "$EXCL_FILE" | \
-            grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS\1|p"
-    else
-        btrfs subvolume list -o "$FS" | \
-            grep $INV -f "$EXCL_FILE" | \
-            grep -v '\.snapshotz' | sed -n "s|.*path \(.*\)|$FS/\1|p"
-    fi
-    rm "$EXCL_FILE"
 }
 
 # Get a list of mountpoints from the unique list of devices showing up as
@@ -113,163 +107,162 @@ list_subvolumes() {
 # as separate filesystems, that would result in multiple snapshotting of those
 # subvols later on.
 # SMELL: what if a subvol is mounted some place other than its path name?
+# NOTE: We could use df --output=target/source, but we're pretending to keep
+# GNU-isms to a minimum - so we use awk instead.
 list_btrfs_mountpoints() {
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
-    mount -t btrfs | sed -n 's/^\(.*\) on \(.*\).*/\1/p' | sort | uniq | \
-    xargs --no-run-if-empty -I {} sh -c \
- 'mount -t btrfs| grep "{}" |head -n 1 |sed -n "s/^.* on \(.*\) type.*/\1/p"' |\
-    grep -v -f "$EXCL_FILE"
+    df -t btrfs | tail -n+2 | awk '{ print $1 }' | sort |uniq | \
+        while read DEV; do df "$DEV" | tail -n+2 ; done | \
+        awk '{ print $6 }' | grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE"
     rm "$EXCL_FILE"
 }
 
 get_subvol_path() {
-    SOURCE="$1"
-    if [ "$(btrfs subvolume show . | grep -c 'is btrfs root$')" = "0" ]; then
-        UUID=$(btrfs subvolume show "$SOURCE" |
-            sed -n "s/^[ \t]*uuid:[ \t]*\(.*\)/\1/p")
-        SUBVOL_PATH=$(btrfs subvolume list  -u . |
-            sed -n "s/.*$UUID path \(.*\)/\1/p")
-        echo "$SUBVOL_PATH"
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    UUID=$(eval "$SUDO btrfs subvolume show '$DIR_ESC'" | \
+        sed -n 's/^[ \t]*uuid:[ \t]*\(.*\)/\1/p')
+    if [ -n "$UUID" ]; then
+        eval "$SUDO btrfs subvolume list -u '$DIR_ESC'" | \
+            sed -n "s/^.*$UUID[ \t]*path[ \t]*\\(.*\\)/\\1/p"
     fi
 }
 
-snapshot_exclude_subvols_cmd() {
-cat <<HERE
-    btrfs subvolume list -o '$1' | sed -n 's|.*path $2[/]*\(.*\)|\\1|p'
-HERE
+# List the excluded subvols relative to DIR
+list_excluded_subvols() {
+    DIR="$1"
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    SUBVOL_PATH_ESC=$(get_subvol_path "$DIR" | sed -e 's/[]$*.^|[]/\\&/g' | \
+        sed "s/'/'\\\\''/g")
+    eval "$SUDO btrfs subvolume list -o '$DIR_ESC' | \
+        sed -n 's|.*path $SUBVOL_PATH_ESC[/]*\\(.*\\)|\\1|p'"
 }
 
-snapshot_exclude_subvols() {
-    SOURCE="$1"
-    SUBVOL_PATH=$(get_subvol_path "$SOURCE" | sed -e 's/[]$*.^|[]/\\&/g' | \
-        sed "s/'/'\\\\''/g")
-    eval "$(snapshot_exclude_subvols_cmd "$SOURCE" "$SUBVOL_PATH")"
+assert_missing() {
+    THING_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    if eval "$SUDO test -e '$THING_ESC'"; then
+        cat <<HERE >&2
+ERROR: '$THING_ESC' exists, aborting
+HERE
+        exit 6
+    fi
+}
+
+assert_exists() {
+    THING_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    if ! eval "$SUDO test -e '$THING_ESC'"; then
+        cat <<HERE >&2
+ERROR: '$THING_ESC' is missing, aborting
+HERE
+        exit 4
+    fi
 }
 
 build_snapshot_cmd() {
-    SOURCE="$1"
-    SNAP="$2"
-    OLD_PWD=$(pwd | sed "s/'/'\\\''/g")
-    PID=$$
+    SUBVOL="$1"
+    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    SNAP_DIR_ESC=$(echo "$2" | sed "s/'/'\\\\''/g")
+    if [ "$SUBVOL" = "/" ]; then
+        EXCL_FILE_ESC="/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    else
+        EXCL_FILE_ESC="${SUBVOL_ESC}/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    fi
 
+    # The stdin/out cat below, is in case we're leaning on sudo...
     cat <<HERE
-#!/bin/sh
-set -e
-btrfs subvolume snapshot '$SOURCE' '${SNAP}.tmp_$PID';
-chmod $SNAZZER_SNAPSHOTZ_EACH_PERMS '${SNAP}.tmp_$PID';
-touch '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
-chmod $SNAZZER_MEASUREMENTS_FILE_PERMS \
-    '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
-cat <<EXCL > '${SNAP}.tmp_$PID/${SNAZZER_MEASUREMENTS_FILE}.exclude';
-$SNAZZER_MEASUREMENTS_FILE
-${SNAZZER_MEASUREMENTS_FILE}.exclude
-$( eval "cd '$SOURCE'"; snapshot_exclude_subvols . | sed -e 's|[`$]|\\&|g' ; eval "cd '$OLD_PWD'")
+cat <<EXCL | $SUDO cat - > '$EXCL_FILE_ESC'
+$( eval "list_excluded_subvols '$SUBVOL_ESC'" | sed -e 's|[`$]|\\&|g')
 EXCL
-btrfs subvolume snapshot -r '${SNAP}.tmp_$PID' '$SNAP' >/dev/null;
-btrfs subvolume delete '${SNAP}.tmp_$PID' >/dev/null;
+$SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
+$SUDO rm '$EXCL_FILE_ESC'
 HERE
 }
 
 snapshot() {
-    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
-    if [ -f "$SOURCE/${SNAZZER_MEASUREMENTS_FILE}.exclude" ]; then
-        echo "ERROR: $SOURCE/${SNAZZER_MEASUREMENTS_FILE}.exclude" >&2
-        printf "\talready exists in source subvolume, cannot continue\n" >&2
-        exit 6
-    fi
-    assert_subvolume "$SOURCE"
-    if [ "$SOURCE" = "/" ]; then
+    SUBVOL="$1"
+    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    assert_subvolume "$SUBVOL"
+    assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    if [ "$SUBVOL" = "/" ]; then
         DEST="/.snapshotz"
+        DEST_ESC="/.snapshotz"
     else
-        DEST="$SOURCE/.snapshotz"
+        DEST="$SUBVOL/.snapshotz"
+        DEST_ESC="$SUBVOL_ESC/.snapshotz"
     fi
-    eval "mkdir -p '$DEST' && chmod $SNAZZER_SNAPSHOTZ_PERMS '$DEST'"
-    SNAP="$DEST/$DATE"
+    eval "$SUDO mkdir -p '$DEST_ESC' --mode=$SNAZZER_SNAPSHOTZ_PERMS"
     if [ "$DRY_RUN" = "1" ]; then
-        build_snapshot_cmd "$SOURCE" "$SNAP"
+        CMD="cat"
     else
-        SNAP_SH=$(mktemp)
-        chmod 0700 "$SNAP_SH"
-        build_snapshot_cmd "$SOURCE" "$SNAP" > "$SNAP_SH"
-        sh "$SNAP_SH"
-        rm "$SNAP_SH"
+        CMD="/bin/sh -e"
     fi
+    build_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE" | $CMD
+    assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 }
 
+list_dirs() {
+    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    eval "$SUDO ls -F '$DIR_ESC'" | sed -n 's|^\(.*\)/$|\1|p'
+}
+
+# List directories to be pruned under a foo/.snapshotz dir, newline separated.
+prune_shotz_dirs() {
+    SUBVOL_SHOTZ="$1"
+    SUBVOL_SHOTZ_ESC=$(echo "$SUBVOL_SHOTZ" | sed "s/'/'\\\\''/g")
+    assert_missing "$SUBVOL_SHOTZ/.incomplete"
+    eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'" | snazzer-prune-candidates | \
+        xargs -I{} echo "$SUBVOL_SHOTZ/{}"
+}
+
+# We can't just use ls --quoting-style=shell feature, this makes
+# snazzer-prune-candidates sad when the last char in a line is '
 newlines2quoted() {
-    printf %s "$1
-" | while IFS= read -r line
-    do
-        LINE="$line"
-        echo -n "'$LINE' "
-    done
+    echo "$1" | sed "s/'/'\\\\''/g" | sed ":a;N;\$!ba;s/\\n/' '/g" | \
+        sed "s/^/'/g" | sed "s/\$/'/g"
+}
+
+build_prune_cmd() {
+    SUBVOL_SHOTZ_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    shift
+    cat <<HERE
+btrfs subvolume delete $@
+HERE
 }
 
 prune() {
-    if [ "$SOURCE" = "/" ]; then
-        SOURCE="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's|$|.snapshotz|g')"
+    SUBVOL="$1"
+    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    if [ "$SUBVOL" = "/" ]; then
+        SUBVOL_SHOTZ="/.snapshotz"
+        SUBVOL_SHOTZ_ESC="/.snapshotz"
     else
-        SOURCE="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's|$|/.snapshotz|g')"
+        SUBVOL_SHOTZ="$SUBVOL/.snapshotz"
+        SUBVOL_SHOTZ_ESC="$SUBVOL_ESC/.snapshotz"
     fi
-    assert_subvolume "$SOURCE"
-    eval "if [ ! -d '$SOURCE' ]; then
-        echo 'ERROR: $SOURCE does not exist, cannot prune' >&2;
-        exit 4;
-    fi"
-    SOURCE_TMP=$(eval "ls -d '$SOURCE'/*.tmp* 2>/dev/null || true")
-    if [ -n "$SOURCE_TMP" ]; then
-        echo "ERROR: temporary snapshots left over from an aborted or" >&2
-        echo "currently in-progress run detected. Refusing to run in the" >&2
-        echo "presence of the following:" >&2
-        echo "$SOURCE_TMP" >&2
-        exit 8
-    fi
-    TO_PRUNE=$(eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | \
-        snazzer-prune-candidates" | sed "s/'/'\\\\''/g")
-    NUM_PRUNE="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | \
-        snazzer-prune-candidates | wc -l")"
-    NUM_AVAIL="$( eval "find '$SOURCE' -maxdepth 1 -mindepth 1 -type d | wc -l")"
-    echo "'$SOURCE': pruning $NUM_PRUNE of $NUM_AVAIL"
-    if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
-        if [ "$NUM_PRUNE" != "0" ]; then
-            PRUNE_ARGS=$(newlines2quoted "$TO_PRUNE")
-            eval "$(echo "btrfs subvolume delete $PRUNE_ARGS | \
-                grep -v 'Transaction commit: none (default)'")"
+    assert_subvolume "$SUBVOL"
+    assert_exists "$SUBVOL_SHOTZ"
+    PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
+    NUM_PRUNE=$(echo "$PRUNE_LIST" | wc -l)
+    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | wc -l)
+    echo "'$SUBVOL_SHOTZ_ESC': pruning $NUM_PRUNE of $NUM_AVAIL"
+    if [ "$NUM_PRUNE" != "0" ]; then
+        if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
+            CMD="/bin/sh -e"
+        elif [ "$DRY_RUN" = "1" ]; then
+            CMD="cat"
+        else
+            echo "ERROR: --prune expected --force or --dry-run" >&2
+            exit 5
         fi
-    elif [ "$DRY_RUN" = "1" ]; then
-        if [ "$NUM_PRUNE" != "0" ]; then
-            PRUNE_ARGS=$(newlines2quoted "$TO_PRUNE")
-            echo "btrfs subvolume delete $PRUNE_ARGS"
+        if [ -n "$PRUNE_LIST" ]; then
+            build_prune_cmd "$SUBVOL_SHOTZ" $(newlines2quoted "$PRUNE_LIST") | \
+                $CMD | grep -v 'Transaction commit: none (default)'
         fi
-    else
-        echo "ERROR: --prune expected --force or --dry-run" >&2
-        exit 5
     fi
-}
-
-build_measure_cmd() {
-    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
-    PID=$$
-
-    cat <<HERE
-#!/bin/sh
-set -e
-printf "\t$SOURCE\n"
-btrfs subvolume snapshot '$SOURCE' '${SOURCE}.tmp_$PID' >/dev/null;
-cd '${SOURCE}.tmp_$PID';
-touch "$SNAZZER_MEASUREMENTS_FILE";
-chmod $SNAZZER_MEASUREMENTS_FILE_PERMS "$SNAZZER_MEASUREMENTS_FILE";
-snazzer-measure . >> "$SNAZZER_MEASUREMENTS_FILE";
-cd ..
-btrfs subvolume delete '${SOURCE}' >/dev/null;
-btrfs subvolume snapshot -r '${SOURCE}.tmp_$PID' '$SOURCE' >/dev/null;
-btrfs subvolume delete '${SOURCE}.tmp_$PID' >/dev/null;
-HERE
 }
 
 measure_lock() {
     if [ ! -d "$SNAZZER_MEAS_LOCK_DIR" ]; then
-        :
+        true
     elif [ ! -f "$SNAZZER_MEAS_LOCK_DIR/pid" ]; then
         echo "ERROR: $SNAZZER_MEAS_LOCK_DIR exists without pidfile 'pid'" >&2
         echo "  Please report this to the author and/or remove the dir" >&2
@@ -281,19 +274,12 @@ measure_lock() {
             echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
             exit 7
         else
-            echo "WARN: Previous snazzer --measure invocation PID $OLD_PID" >&2
-            echo "  exited ungracefully; $SNAZZER_MEAS_LOCK_DIR/pid stale." >&2
-            LIST=$(find / -path "*/.snapshotz/*.tmp_$OLD_PID" -exec \
-                echo btrfs subvolume delete \'{}\' \;)
-            if [ -z "$LIST" ]; then
-                rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
-                rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
-            else
-                echo "ERROR: Temp snapshots left behind by PID $OLD_PID" >&2
-                echo "  You may wish to clean this up manually by running:"
-                echo "$LIST"
-                exit 7
-            fi
+            cat <<HERE >&2
+WARN: Previous snazzer --measure invocation PID $OLD_PID exited ungracefully;
+$SNAZZER_MEAS_LOCK_DIR/pid stale
+HERE
+            rm -v "$SNAZZER_MEAS_LOCK_DIR/pid"
+            rmdir -v "$SNAZZER_MEAS_LOCK_DIR"
         fi
     fi
     mkdir "$SNAZZER_MEAS_LOCK_DIR"
@@ -301,84 +287,110 @@ measure_lock() {
 }
 
 measure_unlock() {
-    rm "$SNAZZER_MEAS_LOCK_DIR/pid"
-    rmdir "$SNAZZER_MEAS_LOCK_DIR"
+    eval "$SUDO rm '$SNAZZER_MEAS_LOCK_DIR/pid'"
+    eval "$SUDO rmdir '$SNAZZER_MEAS_LOCK_DIR'"
+}
+
+build_measure_cmd() {
+    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    REPORT_ESC=$(echo "$2" | sed "s/'/'\\\\''/g")
+
+    cat <<HERE
+snazzer-measure '$SUBVOL_ESC' >> '$REPORT_ESC';
+HERE
 }
 
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
 # to already have made a measurement in the past
 measure() {
-    SOURCE="$(echo "$1" | sed "s/'/'\\\''/g")"
-    if [ "$SOURCE" = "/" ]; then
-        SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/.snapshotz/')"
+    SUBVOL="$1"
+    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    OLD_PWD=$(pwd)
+    if [ "$SUBVOL" = "/" ]; then
+        SUBVOL_SHOTZ="/.snapshotz"
+        SUBVOL_SHOTZ_ESC="/.snapshotz"
     else
-        SHOTZ="$(echo "$1" | sed "s/'/'\\\''/g" | sed 's/$/\/.snapshotz/')"
+        SUBVOL_SHOTZ="$SUBVOL/.snapshotz"
+        SUBVOL_SHOTZ_ESC="$SUBVOL_ESC/.snapshotz"
     fi
-    OLD_DIR=$(pwd)
-    eval "if [ ! -d '$SHOTZ' ]; then
-        echo \"ERROR: '$SHOTZ' does not exist, cannot measure\" >&2;
-        exit 4;
-    fi"
-    eval "cd '$SHOTZ'"
-    assert_subvolume "."
+    assert_subvolume "$SUBVOL"
+    assert_exists "$SUBVOL_SHOTZ"
     measure_lock
-    if [ "$DO_FORCE" = "1" ]; then
-        TO_MEAS=$(find . -maxdepth 1 -mindepth 1 -type d | sed "s/'/'\\''/g")
-    else
-        TO_MEAS=$(find . -maxdepth 1 -mindepth 1 -type d -exec /bin/sh -c "grep -sL '^> on $(hostname) at' '{}/$SNAZZER_MEASUREMENTS_FILE' || echo '{}' | sed 's/$SNAZZER_MEASUREMENTS_FILE$//'" \;)
+    if [ ! -d "$SUBVOL_SHOTZ/.measurements" ]; then
+        eval "$SUDO mkdir '$SUBVOL_SHOTZ/.measurements'"
     fi
-    NUM_MEAS="$( eval "echo -n '$TO_MEAS' |grep . | wc -l")"
-    NUM_AVAIL="$( find '.' -maxdepth 1 -mindepth 1 -type d | wc -l)"
-    echo "'$SHOTZ': measuring $NUM_MEAS of $NUM_AVAIL"
-    echo "$TO_MEAS" |grep . |sed "s/'/'\\''/g" | while read SUBVOL
+    SNAP_LIST_AVAIL=$(eval "$SUDO ls '$SUBVOL_SHOTZ'")
+    if [ "$DO_FORCE" = "1" ]; then
+        SNAP_LIST="$SNAP_LIST_AVAIL"
+    else
+        # Collect measurements that don't mention our hostname
+        SNAP_LIST=$(eval "$SUDO grep --null -rsL '^> on $(hostname) at' \
+            '$SUBVOL_SHOTZ_ESC/.measurements'" | xargs --null -I{} basename {})
+        # Collect snapshot names without any measurements at all
+        # SMELL: What a nasty way to do this. We're trying to limit the number
+        # of different things a $SUDO user would need to open up in sudoers, but
+        # that's a pretty terribly tedious use-case.
+        SNAP_MISSING=$(echo "$SNAP_LIST_AVAIL" | while read SNAP_NAME
+            do eval "$SUDO test -e \
+                '$SUBVOL_SHOTZ_ESC/.measurements/$SNAP_NAME'" || \
+                    echo "$SNAP_NAME"
+            done)
+        SNAP_LIST=$(echo "$SNAP_LIST"; echo "$SNAP_MISSING")
+    fi
+    # grep . so we don't count final newline
+    NUM_MEAS=$( echo "$SNAP_LIST" | grep . | wc -l )
+    NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep . | wc -l)
+    echo "'$SUBVOL_ESC': measuring $NUM_MEAS of $NUM_AVAIL"
+    if [ "$DRY_RUN" = "1" ]; then
+        CMD="cat"
+        PREPOST_CMD="echo"
+    else
+        CMD="/bin/sh -e"
+        PREPOST_CMD="eval"
+    fi
+    $PREPOST_CMD "cd '$SUBVOL_SHOTZ_ESC/.measurements'"
+    echo "$SNAP_LIST" | grep . | while read SNAP_NAME
     do
-        if [ "$DRY_RUN" = "1" ]; then
-            eval "build_measure_cmd '$SUBVOL'"
-        else
-            SNAP_SH=$(mktemp)
-            chmod 0700 "$SNAP_SH"
-            eval "build_measure_cmd '$SUBVOL' > '$SNAP_SH'"
-            sh "$SNAP_SH"
-            rm "$SNAP_SH"
-        fi
+        echo "  $SNAP_NAME"
+        build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME" | $CMD
     done
+    $PREPOST_CMD "cd '$OLD_PWD'"
     measure_unlock
-    eval "cd '$OLD_DIR'"
 }
 
 do_multiple() {
     DO_ACTION="$1"
     shift
-    for SOURCE in "$@"; do
-        if [ "$SOURCE" != "/" ]; then
-            SOURCE=$(echo "$SOURCE" | sed 's|/$||g')
+    for SUBVOL in "$@"; do
+        if [ "$SUBVOL" != "/" ]; then
+            SUBVOL=$(echo "$SUBVOL" | sed 's|/$||g')
         fi
         case "$DO_ACTION" in
-            'snapshot') snapshot "$SOURCE"
+            'snapshot') snapshot "$SUBVOL"
                         ;;
             'prune')    if ! which snazzer-prune-candidates >/dev/null; then
                             echo 'ERROR: snazzer-prune-candidates not found' >&2
                             exit 10
                         fi
-                        prune "$SOURCE"
+                        prune "$SUBVOL"
                         ;;
             'measure')  if ! which snazzer-measure >/dev/null; then
                             echo 'ERROR: snazzer-measure not found' >&2
                             exit 10
                         fi
-                        measure "$SOURCE"
+                        measure "$SUBVOL"
                         ;;
-            'list-subvolumes') echo "$SOURCE"
+            'list-subvolumes') echo "$SUBVOL"
                         ;;
             'list-snapshots')
-                        if [ "$SOURCE" = "/" ]; then
-                            btrfs subvolume list -o "$SOURCE" | \
+                        if [ "$SUBVOL" = "/" ]; then
+                            btrfs subvolume list -o "$SUBVOL" | \
                                 grep '\.snapshotz' | \
                                 sed -n "s|.*path .*\.snapshotz/\(.*\)|/.snapshotz/\1|p"
                         else
-                            MOUNTPOINT=$(echo "$SOURCE" | \
+                            MOUNTPOINT=$(echo "$SUBVOL" | \
                                 sed 's|[&*$.^\|]|\\&|g')
-                            btrfs subvolume list -o "$SOURCE" | \
+                            btrfs subvolume list -o "$SUBVOL" | \
                                 grep '\.snapshotz' | \
                                 sed -n "s|^.*path .*\.snapshotz/\(.*\)|$MOUNTPOINT/\.snapshotz/\1|p"
                         fi
@@ -480,24 +492,30 @@ elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
 elif [ "$DO_ALL" = "1" ]; then
     assert_btrfs_tools
     if [ -z "$1" ]; then
-        setup_subvols_exclude
         for MOUNTPOINT in $(list_btrfs_mountpoints); do
             do_multiple "$DO_ACTION" "$MOUNTPOINT"
-            list_subvolumes "$MOUNTPOINT" | while read SUBVOL
+            SVTMP=$(mktemp)
+            list_subvolumes "$MOUNTPOINT" > "$SVTMP"
+            while read SUBVOL
             do
                 do_multiple "$DO_ACTION" "$SUBVOL"
-            done
-            list_subvolumes_excluded "$MOUNTPOINT"
+            done < "$SVTMP"
+            rm "$SVTMP"
+            report_subvols_excluded "$MOUNTPOINT" >&2
         done
     elif [ -z "$2" ]; then
-        setup_subvols_exclude
         # Repeat the container filesystem here, so that it's included
         do_multiple "$DO_ACTION" "$1"
-        list_subvolumes "$1" | while read SUBVOL
+        # We write list_subvolumes to a file otherwise we clog up stdin from
+        # things in do_multiple which also use while read foo
+        SVTMP=$(mktemp)
+        list_subvolumes "$1" > "$SVTMP"
+        while read SUBVOL
         do
             do_multiple "$DO_ACTION" "$SUBVOL"
-        done
-        list_subvolumes_excluded "$1"
+        done < "$SVTMP"
+        rm "$SVTMP"
+        report_subvols_excluded "$1" >&2
     else
         pod2usage -exit 0 "$0"
         echo "ERROR: Extraneous argument '$2'" >&2
@@ -507,7 +525,7 @@ else
     assert_btrfs_tools
     do_multiple "$DO_ACTION" "$@"
 fi
-if [ "$SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP" = "1" ]; then
+if [ -n "$MISSING_SUBVOLS_EXCL_FILE" ]; then
     rm "$SNAZZER_SUBVOLS_EXCLUDE_FILE";
 fi
 
@@ -539,8 +557,9 @@ Prune all non-excluded subvols on all mounted btrfs filesystems:
 
   snazzer --prune --force --all
 
-Append output of B<snazzer-measure> to C<.snapshot_measurements> in all
-snapshots of all subvolumes on all mounted btrfs filesytems (slow!):
+Append output of B<snazzer-measure> to
+C</path/to/subvol/.snapshotz/.measurements/[isodate]> for all snapshots of all
+subvolumes on all mounted btrfs filesytems (slow!):
 
   snazzer --measure --force --all
 
@@ -567,10 +586,10 @@ mountpoint is omitted, B<snazzer> acts on all mounted btrfs filesystems.
 =item B<--prune>: delete rather than create snapshots. Exactly which are no
 longer needed is B<snazzer-prune-candidates>'s role, documented separately
 
-=item B<--measure>: append output of B<snazzer-measure> to the
-C<.snapshot_measurements> file in the root of each snapshot. By default, only
-snapshots which haven't been measured by this hostname are updated - use
-B<--force> to measure all snapshots
+=item B<--measure>: append output of B<snazzer-measure> to
+C</path/to/subvol/.snapshotz/.measurements/[isodate]> By default, only snapshots
+which haven't been measured by this hostname are updated - use B<--force> to
+measure all snapshots
 
 =item B<--force>: required for B<--prune> to carry out any pruning operation.
 For B<--measure>, this switch overrides the default behaviour of skipping
@@ -649,7 +668,7 @@ the exclude patterns file should only contain "boring" paths. Obvious regex
 characters are escaped, however there are likely many possible hostile path glob
 patterns which will break things.
 
-=item * .snapshot_measurements.exclude is a work-around to the btrfs atime bug
+=item * foo/.snapshotz/.measurements is a work-around to the btrfs atime bug
 
 Snapshots may include empty directories under which some other subvol may have
 existed in the original, snapshotted subvolume. However, btrfs has a bug where
@@ -657,10 +676,8 @@ these empty directories behave differently to empty directories created with
 C<mkdir>: atimes always return with the current local time, which is obvioulsy
 different from one second to the next. So we have no hope of creating
 reproducible shasums or PGP signatures unless those directories are excluded
-from our measurements of the snapshot.
-
-http://comments.gmane.org/gmane.comp.file-systems.btrfs/43452
-https://gist.github.com/csirac2/c2b5b2b9d0193b3c08a8
+from our measurements of the snapshot. See also: 
+L<https://bugzilla.kernel.org/show_bug.cgi?id=95201>
 
 =back
 
@@ -686,9 +703,6 @@ root, but it already exists in the current subvolume
 
 =item 7. tried to perform snapshot measurements while existing measurements are
 already in progress, check lock dir at /var/run/snazzer-measure.lock
-
-=item 8. detected left-over *.tmp snapshots in the .snapshotz path. These could
-also indicate that another snazzer operation is currently already running.
 
 =item 9. tried to display man page with a formatter which is not installed
 
