@@ -107,7 +107,7 @@ measure_gpg() {
     TAR_CMD=$(build_tar_cmd "$DIR")
     echo "$HOST_DATETIME"
     cat <<HERE
-OLD=\$(pwd); SIG=\$(mktemp) && cat $MEAS_FILE | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $TAR_CMD | gpg2 --verify \$SIG -; cd \$OLD
+OLD=\$(pwd); SIG=\$(mktemp) && cat $MEAS_FILE | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $TAR_CMD | gpg2 --verify \$SIG -; cd "\$OLD"
 HERE
     eval "$SIG_CMD"
     echo ""

@@ -84,10 +84,9 @@ list_subvolumes() {
     fi
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     eval "$SUDO btrfs subvolume list -ot '$DIR_ESC'" | tail -n+3 | \
-        $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | awk '{ print $4 }' | \
-        while read SUBVOL; do
-        echo "${DIR}$SUBVOL"
-    done
+        $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
+        sed 's/^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*//g' | \
+        while read SUBVOL; do echo "${DIR}$SUBVOL"; done
     rm "$EXCL_FILE"
 }
 
@@ -210,7 +209,7 @@ prune_shotz_dirs() {
     SUBVOL_SHOTZ_ESC=$(echo "$SUBVOL_SHOTZ" | sed "s/'/'\\\\''/g")
     assert_missing "$SUBVOL_SHOTZ/.incomplete"
     eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'" | snazzer-prune-candidates | \
-        xargs -I{} echo "$SUBVOL_SHOTZ/{}"
+        while read SNAP_NAME; do echo "$SUBVOL_SHOTZ/$SNAP_NAME"; done
 }
 
 # We can't just use ls --quoting-style=shell feature, this makes
@@ -312,15 +311,16 @@ measure() {
     assert_exists "$SUBVOL_SHOTZ"
     measure_lock
     if [ ! -d "$SUBVOL_SHOTZ/.measurements" ]; then
-        eval "$SUDO mkdir '$SUBVOL_SHOTZ/.measurements'"
+        eval "$SUDO mkdir '$SUBVOL_SHOTZ_ESC/.measurements'"
     fi
-    SNAP_LIST_AVAIL=$(eval "$SUDO ls '$SUBVOL_SHOTZ'")
+    SNAP_LIST_AVAIL=$(eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'")
     if [ "$DO_FORCE" = "1" ]; then
         SNAP_LIST="$SNAP_LIST_AVAIL"
     else
         # Collect measurements that don't mention our hostname
-        SNAP_LIST=$(eval "$SUDO grep --null -rsL '^> on $(hostname) at' \
-            '$SUBVOL_SHOTZ_ESC/.measurements'" | xargs --null -I{} basename {})
+        SNAP_LIST=$(eval "$SUDO grep -rsL '^> on $(hostname) at' \
+            '$SUBVOL_SHOTZ_ESC/.measurements'" | \
+            while read SNAP_FULLPATH; do basename "$SNAP_FULLPATH"; done)
         # Collect snapshot names without any measurements at all
         # SMELL: What a nasty way to do this. We're trying to limit the number
         # of different things a $SUDO user would need to open up in sudoers, but
