@@ -3,6 +3,16 @@
 set -e
 SNAZZER_VERSION=0.2
 
+# Keep in sync with the POD!
+if [ -z "$SNAZZER_SIG_CMD" ]; then
+    SNAZZER_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
+    --detach-sign -"
+fi
+# Keep in sync with the POD!
+if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
+    SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
+fi
+
 get_date() {
     if [ "$SNAZZER_USE_UTC" = "1" ]; then
         date -u +"%Y-%m-%dT%H%M%SZ"
@@ -10,14 +20,6 @@ get_date() {
         date +"%Y-%m-%dT%H%M%S%z"
     fi
 }
-
-# Keep in sync with the POD!
-DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-    --detach-sign -"
-# Keep in sync with the POD!
-if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
-    SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
-fi
 
 host_datetime() {
     echo "> on $(hostname) at $(get_date), $1:"
@@ -49,7 +51,7 @@ build_find_excl_switch() {
     DIR="$1"
     EXCL_FILE="$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 
-    eval "cat '$EXCL_FILE'" | sed "s/'/'\\\\''/g" | while read RULE
+    cat "$EXCL_FILE" | sed "s/'/'\\\\''/g" | while read RULE
     do
         echo -n " -path '*$RULE' -prune -o"
     done
@@ -87,29 +89,16 @@ measure_tar_info() {
     echo "$TAR_VERSION $TAR_DEFAULTS"
 }
 
-build_sig_cmd() {
-    if [ -z "$SNAZZER_SIG_CMD" ]; then
-        echo "$DEFAULT_SIG_CMD"
-    else
-        echo "$SNAZZER_SIG_CMD"
-    fi
-}
-
 measure_gpg() {
     DIR="$1"
-    MEAS_FILE=$(eval "basename '$DIR'")
-    if [ -z "$SNAZZER_SIG_CMD" ]; then
-        SIG_CMD="$DEFAULT_SIG_CMD"
-    else
-        SIG_CMD="$SNAZZER_SIG_CMD"
-    fi
+    MEAS_FILE=$(basename "$DIR")
     HOST_DATETIME=$(host_datetime "gpg")
     TAR_CMD=$(build_tar_cmd "$DIR")
     echo "$HOST_DATETIME"
     cat <<HERE
-OLD=\$(pwd); SIG=\$(mktemp) && cat $MEAS_FILE | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $TAR_CMD | gpg2 --verify \$SIG -; cd "\$OLD"
+OLD=\$(pwd); SIG=\$(mktemp) && cat "$MEAS_FILE" | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $TAR_CMD | gpg2 --verify \$SIG -; cd "\$OLD"
 HERE
-    eval "$SIG_CMD"
+    eval "$SNAZZER_SIG_CMD"
     echo ""
 }
 
