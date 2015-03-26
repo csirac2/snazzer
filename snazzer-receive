@@ -29,6 +29,15 @@ list_snapshots() {
     list_snapshots_build_cmd "$@" | /bin/sh -e
 }
 
+list_remote_snapshot_measurements() {
+    HOST="$1"
+    SUBVOL_ESC_ESC=$(echo "$2" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g";)
+    cat <<HERE | /bin/sh -e | sed "s|^.*/||g"
+ssh "$HOST" '$SUDO grep -srl '\''^> on $HOST at '\'' \
+    '\''$SUBVOL_ESC_ESC/.snapshotz/.measurements/'\'''
+HERE
+}
+
 build_send_cmd() {
     HOST="$1"
     SUBVOL_PATH_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
@@ -44,7 +53,6 @@ build_send_cmd() {
     cat <<HERE
 $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
     '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
-echo -n "  "
 ssh '$HOST' '$SUDO btrfs send '\''$SNAP_PATH_ESC_ESC'\'' $PARENT_SWITCH' \
     2>/dev/null | $SUDO btrfs receive '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
 $SUDO btrfs subvolume snapshot -r \
@@ -53,6 +61,21 @@ $SUDO btrfs subvolume snapshot -r \
 $SUDO btrfs subvolume delete \
     '$SUBVOL_PATH_ESC/.snapshotz/.incomplete/$SNAP_NAME' >/dev/null
 $SUDO rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
+HERE
+}
+
+build_copy_cmd() {
+    HOST="$1"
+    SUBVOL_PATH_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
+    SUBVOL_PATH_ESC_ESC=$(echo "$SUBVOL_PATH_ESC" | sed "s|'|'\\\\''|g")
+    SNAP_NAME="$3"
+    cat <<HERE
+$SUDO mkdir -vp --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+    '$SUBVOL_PATH_ESC/.snapshotz/.measurements'
+ssh '$HOST' '$SUDO cat \
+    '\''/$SUBVOL_PATH_ESC_ESC/.snapshotz/.measurements/$SNAP_NAME'\''' | \
+    $SUDO tee -a '$SUBVOL_PATH_ESC/.snapshotz/.measurements/$SNAP_NAME' \
+    >/dev/null
 HERE
 }
 
@@ -79,6 +102,78 @@ is_subvol() {
     else
         echo 0
     fi
+}
+
+do_subvolume_measurements() {
+    HOST="$1"
+    SUBVOL="$2"
+    if [ -z "$SUBVOL" ]; then
+        SUBVOL_PATH="."
+    else
+        SUBVOL_PATH="$SUBVOL"
+    fi
+    SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
+    echo -n "  appending measurements..."
+    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'"; then
+        cat <<HERE >&2
+
+ERROR: '$SUBVOL_PATH_ESC/.snapshotz/.incomplete' exists. Another instance is already
+running, or a previous invocation was interrupted. If you are sure no other
+instances are already running, remove this directory and snapshots under it:
+
+btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'/*
+rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
+HERE
+        exit 2
+    fi
+    if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
+        echo "ERROR: $SUBVOL_PATH not a subvolume, this shouldn't happen."
+        exit
+    fi
+    if ! eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.measurements'"; then
+        eval "$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+            '$SUBVOL_PATH_ESC/.snapshotz/.measurements'"
+    fi
+    SNAPSHOTS=$(ls "$SUBVOL_PATH/.snapshotz")
+    MEAS_WANT=$(mktemp)
+    MEAS_ABSENT=$(eval "$SUDO grep -srL '^> on $HOST at ' \
+        '$SUBVOL_PATH_ESC/.snapshotz/.measurements/'" | sed "s|^.*/||g")
+    MEAS_REMOTE=$(list_remote_snapshot_measurements "$HOST" "/$SUBVOL_PATH")
+    # 1. Print snapshot measurements that we have locally but are missing
+    #    mentions of remote $HOST;
+    # 2. Print snapshot measurements available on the remote $HOST
+    # 3. Write the union of these two lists (duplicates only) as a list of the
+    #    snapshot names which we should grab remote $HOST's measurements of
+    cat <<HERE | sort | uniq -d > "$MEAS_WANT"
+$(echo "$MEAS_ABSENT")
+$(echo "$MEAS_REMOTE")
+HERE
+    NUM_WANT=$(wc -l "$MEAS_WANT" | cut -d ' ' -f 1)
+    NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
+    NUM_COPY=0
+    NUM_REMOTE=$(echo "$MEAS_REMOTE" | wc -l | cut -d ' ' -f 1)
+    if [ "$DRY_RUN" != "0" ]; then
+        CMD="cat"
+    else
+        CMD="/bin/sh -e"
+    fi
+    while read SNAP_NAME
+    do
+        build_copy_cmd "$HOST" "$SUBVOL_PATH" "$SNAP_NAME" | $CMD
+        NUM_COPY=$(expr $NUM_COPY + 1)
+    done < "$MEAS_WANT"
+    echo "$MEAS_REMOTE" > "$MEAS_WANT"
+    while read SNAP_NAME
+    do
+        if eval "$SUDO test -e  '$SUBVOL_PATH_ESC/.snapshotz/$SNAP_NAME'" && \
+            ! eval "$SUDO test -e \
+            '$SUBVOL_PATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"; then
+            build_copy_cmd "$HOST" "$SUBVOL_PATH" "$SNAP_NAME" | $CMD
+            NUM_COPY=$(expr $NUM_COPY + 1)
+        fi
+    done < "$MEAS_WANT"
+    rm "$MEAS_WANT"
+    echo " $NUM_COPY of $NUM_REMOTE."
 }
 
 do_subvolume() {
@@ -113,44 +208,42 @@ HERE
     # Last snapshot seen in the local target fs
     PREV_SNAP=
     SNAPSHOTS=$(eval "list_snapshots '$HOST' '/$SUBVOL_PATH_ESC'")
-    SNAP_WANT=$(echo "$SNAPSHOTS" | snazzer-prune-candidates --invert)
-    NUM_WANT=$(echo "$SNAP_WANT" | wc -l | cut -d ' ' -f 1)
+    SNAP_WANT=$(mktemp)
+    echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
+    NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
     # SMELL: that expr errors when the answer is zero, is why sh scripting sucks
     NUM_PRUN=$(expr $NUM_SNAP - $NUM_WANT || true)
     NUM_RECV=0
     NUM_SKIP=0
-    echo "$SNAP_WANT
-<<<EOF>>>" | while read SNAPSHOT
+    while read SNAPSHOT
     do
-        if [ "$SNAPSHOT" = "<<<EOF>>>" ]; then
-            echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
-            echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
-        else
-            SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
-            SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
-            SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
-            if [ -z "$SUBVOL_PATH" ]; then
-                SUBVOL_PATH="."
-            fi
-            if eval "$SUDO test -e '$SNAP_PATH_ESC'"; then
-                NUM_SKIP=$(expr $NUM_SKIP + 1)
-            else
-                NUM_RECV=$(expr $NUM_RECV + 1)
-                CMD="/bin/sh -e"
-                if [ "$DRY_RUN" != "0" ]; then
-                    CMD="cat"
-                fi
-                if [ -z "$PREV_SNAP" ]; then
-                    build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | $CMD
-                else
-                    build_send_cmd \
-                        "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$PREV_SNAP" | $CMD
-                fi
-            fi
-            PREV_SNAP="$SNAP_PATH"
+        SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+        SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
+        SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
+        if [ -z "$SUBVOL_PATH" ]; then
+            SUBVOL_PATH="."
         fi
-    done
+        if eval "$SUDO test -e '$SNAP_PATH_ESC'"; then
+            NUM_SKIP=$(expr $NUM_SKIP + 1)
+        else
+            NUM_RECV=$(expr $NUM_RECV + 1)
+            CMD="/bin/sh -e"
+            if [ "$DRY_RUN" != "0" ]; then
+                CMD="cat"
+            fi
+            if [ -z "$PREV_SNAP" ]; then
+                build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | $CMD
+            else
+                build_send_cmd \
+                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$PREV_SNAP" | $CMD
+            fi
+        fi
+        PREV_SNAP="$SNAP_PATH"
+    done < "$SNAP_WANT"
+    rm "$SNAP_WANT"
+    echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
+    echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
 }
 
 #SMELL: Assumes --list-snapshots lines are grouped by subvol, ordered by date
@@ -170,6 +263,7 @@ do_host() {
         I=$(expr $I + 1)
         SUBVOL=$(head -n $I "$LIST_OUT" | tail -n 1)
         do_subvolume "$HOST" "$SUBVOL"
+        do_subvolume_measurements "$HOST" "$SUBVOL"
     done
     echo -n "Processed $NUM_SUBVOL subvolume(s)."
     if [ -s "$LIST_ERR" ]; then
@@ -261,7 +355,7 @@ unable to replace the current working directory with a btrfs subvolume if it
 isn't already one.
 
 Therefore, if required, ensure the current working directory is already a btrfs
-subvolume prior to running B<snazzer-receive>.
+subvolume prior to running B<snazzer-receive> if you need to receive btrfs root.
 
 B<NOTE 2:> C<snazzer-receive host --all> may process a list of snapshots
 spanning multiple separate btrfs filesystems on a remote host, but unless extra
@@ -314,6 +408,43 @@ non-zero exit status under the following conditions:
 =item 2. C<.snapshotz/.incomplete> already exists at a given destination subvolume
 
 =item 9. tried to display man page with a formatter which is not installed
+
+=back
+
+=head1 TODO
+
+=item 1. improve fetch/append of remote host's measurements
+
+B<snazzer-receive> currently does some clumsy concatenation of the remote host's
+measurement file onto the local measurement file for a given snapshot if the
+local measurement file is either missing or does not mention that remote host's
+hostname. Whilst this supports the simple use-case of wanting to obtain initial
+measurements performed on a remote host, once a remote host's measurements have
+been appended there is no attempt to append any further measurement results onto
+the local measurements file.  If this bothers you, please report detailed
+use-cases to the author (patches welcome).
+
+=item 2. document sudo and recommended sudoers files
+
+The snazzer project has been written with the assumption that most systems
+administrators will not want to run remote ssh commands either from or to the
+root user. When a snazzer script requires root privileges and uid 0 is not
+detected, these commands are prefixed with C<sudo>. Example sudoers files to
+restrict which commands are required for sudo operation shall be included at
+some point.
+
+=item 3. include restricted wrapper script to be used as ssh forced command
+
+The snazzer project assumes that systems administrators would prefer to restrict
+the possible exposure of a dedicated snazzer remote user account, even if sudo
+is locked down. To that end, a wrapper script shall be provided which restricts
+possible ssh remote commands to only the few actually necessary for snazzer
+operation.
+
+Even so, commands which snazzer relies on such as C<sudo btrfs send> are
+extremely dangerous no matter if it's the only command allowed by the system -
+securing ssh keys is of utmost importance; consider protecting ssh keys with
+smartcards, TPM, hardware OTP solution such as Yubi/GoldKeys etc.
 
 =back
 
