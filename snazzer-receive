@@ -10,7 +10,7 @@ else
     SUDO="sudo"
 fi
 
-list_snapshots() {
+list_snapshots_build_cmd() {
     HOST="$1"
     ARGS=
     shift
@@ -20,9 +20,13 @@ list_snapshots() {
             shift
         fi
     done
-    cat <<HERE | /bin/sh -e
+    cat <<HERE
 ssh "$HOST" '$SUDO snazzer --list-snapshots $(echo "$ARGS" | sed "s|'|'\\\\''|g")'
 HERE
+}
+
+list_snapshots() {
+    list_snapshots_build_cmd "$@" | /bin/sh -e
 }
 
 build_send_cmd() {
@@ -39,16 +43,16 @@ build_send_cmd() {
     fi
     cat <<HERE
 $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
-    '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
+    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
 echo -n "  "
 ssh '$HOST' '$SUDO btrfs send '\''$SNAP_PATH_ESC_ESC'\'' $PARENT_SWITCH' \
-    2>/dev/null | $SUDO btrfs receive '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
+    2>/dev/null | $SUDO btrfs receive '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
 $SUDO btrfs subvolume snapshot -r \
-    '$SUBVOL_PATH_ESC/.snapshotz/incomplete/$SNAP_NAME' \
+    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete/$SNAP_NAME' \
     '$SUBVOL_PATH_ESC/.snapshotz/' >/dev/null
 $SUDO btrfs subvolume delete \
-    '$SUBVOL_PATH_ESC/.snapshotz/incomplete/$SNAP_NAME' >/dev/null
-$SUDO rmdir '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
+    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete/$SNAP_NAME' >/dev/null
+$SUDO rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
 HERE
 }
 
@@ -57,7 +61,7 @@ create_subvol() {
     DIR_ESC=$(echo "$DIR" | sed "s|'|'\\\\''|g")
     PARENT=$(dirname "$DIR")
     PARENT_ESC=$(echo "$PARENT" | sed "s|'|'\\\\''|g")
-    if [ "$DIR" != "$PARENT" ]; then
+    if [ "$DIR" != "$PARENT" -a "$PARENT" != "." ]; then
         eval "$SUDO mkdir -vp '$PARENT_ESC'"
     fi
     cat <<HERE | /bin/sh -e
@@ -87,15 +91,15 @@ do_subvolume() {
     fi
     SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
     echo "subvolume '$SUBVOL_PATH_ESC':"
-    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/incomplete'"; then
+    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'"; then
         cat <<HERE >&2
 
-ERROR: '$SUBVOL_PATH_ESC/.snapshotz/incomplete' exists. Another instance is already
+ERROR: '$SUBVOL_PATH_ESC/.snapshotz/.incomplete' exists. Another instance is already
 running, or a previous invocation was interrupted. If you are sure no other
 instances are already running, remove this directory and snapshots under it:
 
-btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/incomplete'/*
-rmdir '$SUBVOL_PATH_ESC/.snapshotz/incomplete'
+btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'/*
+rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
 HERE
         exit 2
     fi
@@ -109,7 +113,6 @@ HERE
     # Last snapshot seen in the local target fs
     PREV_SNAP=
     SNAPSHOTS=$(eval "list_snapshots '$HOST' '/$SUBVOL_PATH_ESC'")
-    echo "SNAPSHOTS: $SNAPSHOTS"
     SNAP_WANT=$(echo "$SNAPSHOTS" | snazzer-prune-candidates --invert)
     NUM_WANT=$(echo "$SNAP_WANT" | wc -l | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
@@ -126,10 +129,11 @@ HERE
         else
             SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
             SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
+            SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
             if [ -z "$SUBVOL_PATH" ]; then
                 SUBVOL_PATH="."
             fi
-            if eval "$SUDO test -e '$SNAP_PATH'"; then
+            if eval "$SUDO test -e '$SNAP_PATH_ESC'"; then
                 NUM_SKIP=$(expr $NUM_SKIP + 1)
             else
                 NUM_RECV=$(expr $NUM_RECV + 1)
@@ -167,9 +171,14 @@ do_host() {
         SUBVOL=$(head -n $I "$LIST_OUT" | tail -n 1)
         do_subvolume "$HOST" "$SUBVOL"
     done
-    echo "Processed $NUM_SUBVOL subvolumes."
+    echo -n "Processed $NUM_SUBVOL subvolume(s)."
     if [ -s "$LIST_ERR" ]; then
-        echo "  ssh $HOST 'snazzer --list-snapshots $@': $(grep . "$LIST_ERR")"
+        echo " Additional output from:"
+        echo -n "  "
+        eval "list_snapshots_build_cmd '$HOST' $@"
+        grep . "$LIST_ERR" | sed 's/^/    /g'
+    else
+        echo ""
     fi
     rm "$LIST_OUT"
     rm "$LIST_ERR"
@@ -302,7 +311,7 @@ non-zero exit status under the following conditions:
 
 =item 1. invalid arguments
 
-=item 2. C<.snapshotz/incomplete> already exists at a given destination subvolume
+=item 2. C<.snapshotz/.incomplete> already exists at a given destination subvolume
 
 =item 9. tried to display man page with a formatter which is not installed
 

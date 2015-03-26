@@ -96,7 +96,7 @@ report_subvols_excluded() {
 
     if [ "$NUM" != "0" ]; then
         echo ""
-        echo "$NUM subvolumes excluded by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
+        echo "$NUM subvolumes excluded in $DIR by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
     fi
 }
 
@@ -383,11 +383,11 @@ do_multiple() {
                                 grep '\.snapshotz' | \
                                 sed -n "s|.*path .*\.snapshotz/\(.*\)|/.snapshotz/\1|p"
                         else
-                            MOUNTPOINT=$(echo "$SUBVOL" | \
+                            MOUNTPOINT_ESC=$(echo "$SUBVOL" | \
                                 sed 's|[&*$.^\|]|\\&|g')
                             $SUDO btrfs subvolume list -o "$SUBVOL" | \
                                 grep '\.snapshotz' | \
-                                sed -n "s|^.*path .*\.snapshotz/\(.*\)|$MOUNTPOINT/\.snapshotz/\1|p"
+                                sed -n "s|^.*path .*\.snapshotz/\(.*\)|$MOUNTPOINT_ESC/\.snapshotz/\1|p"
                         fi
                         ;;
             *) echo "ERROR: invalid cmd '$DO_ACTION'"
