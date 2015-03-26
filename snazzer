@@ -37,9 +37,13 @@ HERE
     cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
 fi
 
+# So, mountpoint(1) returns true if the path is a btrfs subvolume root, but we
+# want to know if the path is a btrfs *filesystem* root. Hence the df/grep crazy
 assert_mountpoint() {
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    if ! eval "mountpoint -q '$DIR_ESC'"; then
+    DIR_ESC=$(readlink -f "$1" | sed "s/'/'\\\\''/g")
+    DIR_ESC_GREP=$(echo "$DIR_ESC" | sed 's|[$.^]|\\&|g')
+    if ! eval "mountpoint -q '$DIR_ESC'" || \
+        ! eval "df | grep -c '$DIR_ESC_GREP\$' >/dev/null"; then
         echo "ERROR: '$DIR_ESC' is not a filesystem mountpoint" >&2
         exit 2
     fi
