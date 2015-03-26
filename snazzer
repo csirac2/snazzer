@@ -173,7 +173,9 @@ build_snapshot_cmd() {
     # The stdin/out cat below, is in case we're leaning on sudo...
     cat <<HERE
 cat <<EXCL | $SUDO tee '$EXCL_FILE_ESC' >/dev/null
+.snapshotz
 .snapshotz/*
+$SNAZZER_MEASUREMENTS_EXCLUDE_FILE
 $( eval "list_excluded_subvols '$SUBVOL_ESC'" | sed -e 's|[`$]|\\&|g')
 EXCL
 $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
