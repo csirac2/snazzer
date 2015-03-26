@@ -35,7 +35,7 @@ unable to replace the current working directory with a btrfs subvolume if it
 isn't already one.
 
 Therefore, if required, ensure the current working directory is already a btrfs
-subvolume prior to running **snazzer-receive**.
+subvolume prior to running **snazzer-receive** if you need to receive btrfs root.
 
 **NOTE 2:** `snazzer-receive host --all` may process a list of snapshots
 spanning multiple separate btrfs filesystems on a remote host, but unless extra
@@ -67,8 +67,43 @@ filesystems under the current working directory before running
 non-zero exit status under the following conditions:
 
 - 1. invalid arguments
-- 2. `.snapshotz/current` already exists at a given destination subvolume
+- 2. `.snapshotz/.incomplete` already exists at a given destination subvolume
 - 9. tried to display man page with a formatter which is not installed
+
+# TODO
+
+- 1. improve fetch/append of remote host's measurements
+
+    **snazzer-receive** currently does some clumsy concatenation of the remote host's
+    measurement file onto the local measurement file for a given snapshot if the
+    local measurement file is either missing or does not mention that remote host's
+    hostname. Whilst this supports the simple use-case of wanting to obtain initial
+    measurements performed on a remote host, once a remote host's measurements have
+    been appended there is no attempt to append any further measurement results onto
+    the local measurements file.  If this bothers you, please report detailed
+    use-cases to the author (patches welcome).
+
+- 2. document sudo and recommended sudoers files
+
+    The snazzer project has been written with the assumption that most systems
+    administrators will not want to run remote ssh commands either from or to the
+    root user. When a snazzer script requires root privileges and uid 0 is not
+    detected, these commands are prefixed with `sudo`. Example sudoers files to
+    restrict which commands are required for sudo operation shall be included at
+    some point.
+
+- 3. include restricted wrapper script to be used as ssh forced command
+
+    The snazzer project assumes that systems administrators would prefer to restrict
+    the possible exposure of a dedicated snazzer remote user account, even if sudo
+    is locked down. To that end, a wrapper script shall be provided which restricts
+    possible ssh remote commands to only the few actually necessary for snazzer
+    operation.
+
+    Even so, commands which snazzer relies on such as `sudo btrfs send` are
+    extremely dangerous no matter if it's the only command allowed by the system -
+    securing ssh keys is of utmost importance; consider protecting ssh keys with
+    smartcards, TPM, hardware OTP solution such as Yubi/GoldKeys etc.
 
 # SEE ALSO
 
@@ -102,3 +137,11 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# POD ERRORS
+
+Hey! **The above document had some coding errors, which are explained below:**
+
+- Around line 416:
+
+    '=item' outside of any '=over'
