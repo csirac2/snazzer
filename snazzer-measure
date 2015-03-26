@@ -27,7 +27,7 @@ host_datetime() {
 
 build_tar_cmd() {
     cat <<HERE
-cd '$1' && find . -xdev -print0 | LC_ALL=C sort -z | \
+cd '$1' && find . -mindepth 2 -xdev -print0 | LC_ALL=C sort -z | \
 tar --null -T - --no-recursion --preserve-permissions --one-file-system -c \
 --to-stdout --exclude-from '$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
 HERE
@@ -60,7 +60,7 @@ build_find_excl_switch() {
 build_find_cmd() {
     EXCL=$(build_find_excl_switch "$1")
     cat <<HERE
-find '$1' -xdev -path '/tmp' -prune -o $EXCL -type f -printf "%T@ '%p'\\\n" |\
+find '$1' -mindepth 2 -xdev -path '/tmp' -prune -o $EXCL -type f -printf "%T@ '%p'\\\n" |\
  sort -n | tail -1 | cut -f2- -d" " |\
  xargs ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
 HERE
