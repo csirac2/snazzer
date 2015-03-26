@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-SNAZZER_VERSION=0.1
+SNAZZER_VERSION=0.2
 SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_SNAPSHOTZ_PERMS=0755
 
@@ -134,7 +134,7 @@ HERE
         eval "$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
             '$SUBVOL_PATH_ESC/.snapshotz/.measurements'"
     fi
-    SNAPSHOTS=$(ls "$SUBVOL_PATH/.snapshotz")
+    SNAPSHOTS=$($SUDO ls "$SUBVOL_PATH/.snapshotz")
     MEAS_WANT=$(mktemp)
     MEAS_ABSENT=$(eval "$SUDO grep -srL '^> on $HOST at ' \
         '$SUBVOL_PATH_ESC/.snapshotz/.measurements/'" | sed "s|^.*/||g")
@@ -386,15 +386,7 @@ B<snazzer-receive>.
 
 =head1 ENVIRONMENT
 
-=over
-
-=back
-
 =head1 BUGS AND LIMITATIONS
-
-=over
-
-=back
 
 =head1 EXIT STATUS
 
@@ -412,6 +404,8 @@ non-zero exit status under the following conditions:
 =back
 
 =head1 TODO
+
+=over
 
 =item 1. improve fetch/append of remote host's measurements
 
