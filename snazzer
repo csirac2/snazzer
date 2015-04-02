@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 SNAZZER_VERSION=0.2
-SNAZZER_MEAS_LOCK_DIR="/var/run/snazzer-measure.lock"
+SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 
 if [ "$SNAZZER_USE_UTC" = "1" ]; then
@@ -29,6 +29,8 @@ if ! $SUDO test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
 var/cache
 var/lib/docker
 .snapshots
+*tmp*
+*backup*
 *secret*
 HERE
     cat <<HERE >&2
@@ -99,7 +101,6 @@ report_subvols_excluded() {
     NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
 
     if [ "$NUM" != "0" ]; then
-        echo ""
         echo "$NUM subvolumes excluded in $DIR by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
     fi
 }
@@ -110,13 +111,11 @@ report_subvols_excluded() {
 # as separate filesystems, that would result in multiple snapshotting of those
 # subvols later on.
 # SMELL: what if a subvol is mounted some place other than its path name?
-# NOTE: We could use df --output=target/source, but we're pretending to keep
-# GNU-isms to a minimum - so we use awk instead.
 list_btrfs_mountpoints() {
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     df -t btrfs | tail -n+2 | awk '{ print $1 }' | sort |uniq | \
-        while read DEV; do df "$DEV" | tail -n+2 ; done | \
-        awk '{ print $6 }' | grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE"
+        while read DEV; do df --output=target "$DEV" | tail -n+2 ; done | \
+        grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE"
     rm "$EXCL_FILE"
 }
 
@@ -183,6 +182,23 @@ $SUDO rm '$EXCL_FILE_ESC'
 HERE
 }
 
+report_snapshot_dirs() {
+    SUBVOL="$1"
+
+    if [ "$DO_ACTION" = "snapshot" -a "$SUBVOL" = "/" ]; then
+        SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+        SUBVOL_MNT=$(eval "df --output=target '$SUBVOL'" | tail -n+2)
+        for DIR in "/tmp" "/var/tmp" "/var/cache" "/var/log"; do
+            DIR_MNT=$(eval "df --output=target '$DIR'" | tail -n+2)
+            if [ "$DIR_MNT" = "$SUBVOL_MNT" ]; then
+                cat <<HERE
+WARN: snapshot of $SUBVOL includes $DIR directory, is this what you wanted?
+HERE
+            fi
+        done
+    fi
+}
+
 snapshot() {
     SUBVOL="$1"
     SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
@@ -245,15 +261,15 @@ prune() {
     NUM_PRUNE=$(echo "$PRUNE_LIST" | grep . | wc -l)
     NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep . | wc -l)
     echo "'$SUBVOL_SHOTZ_ESC': pruning $NUM_PRUNE of $NUM_AVAIL"
+    if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
+        CMD="/bin/sh -e"
+    elif [ "$DRY_RUN" = "1" ]; then
+        CMD="cat"
+    else
+        echo "ERROR: --prune expected --force or --dry-run" >&2
+        exit 5
+    fi
     if [ "$NUM_PRUNE" != "0" ]; then
-        if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
-            CMD="/bin/sh -e"
-        elif [ "$DRY_RUN" = "1" ]; then
-            CMD="cat"
-        else
-            echo "ERROR: --prune expected --force or --dry-run" >&2
-            exit 5
-        fi
         if [ -n "$PRUNE_LIST" ]; then
             build_prune_cmd "$PRUNE_LIST" | $CMD | \
                 grep -v 'Transaction commit: none (default)'
@@ -350,13 +366,15 @@ measure() {
         CMD="/bin/sh -e"
         PREPOST_CMD="eval"
     fi
-    $PREPOST_CMD "cd '$SUBVOL_SHOTZ_ESC/.measurements'"
-    echo "$SNAP_LIST" | grep . | while read SNAP_NAME
-    do
-        echo "  $SNAP_NAME"
-        build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME" | $CMD
-    done
-    $PREPOST_CMD "cd '$OLD_PWD_ESC'"
+    if [ -n "$SNAP_LIST" ]; then
+        $PREPOST_CMD "cd '$SUBVOL_SHOTZ_ESC/.measurements'"
+        echo "$SNAP_LIST" | grep . | while read SNAP_NAME
+        do
+            echo "echo '  $SNAP_NAME'" | $CMD
+            build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME" | $CMD
+        done
+        $PREPOST_CMD "cd '$OLD_PWD_ESC'"
+    fi
     measure_unlock
 }
 
@@ -364,9 +382,8 @@ do_multiple() {
     DO_ACTION="$1"
     shift
     for SUBVOL in "$@"; do
-        if [ "$SUBVOL" != "/" ]; then
-            SUBVOL=$(echo "$SUBVOL" | sed 's|/$||g')
-        fi
+        # Remove trailing slash
+        SUBVOL=$(echo "$SUBVOL" | sed 's|\(.\)/$|\1|g')
         case "$DO_ACTION" in
             'snapshot') snapshot "$SUBVOL"
                         ;;
@@ -483,6 +500,51 @@ HERE
     shift
 done
 
+do_mountpoint() {
+    MOUNTPOINT="$1"
+    TMP_EXCL="$2"
+    TMP_DIRS="$3"
+    # Remove trailing slash
+    if [ "$MOUNTPOINT" != "/" ]; then
+        MOUNTPOINT=$(echo "$MOUNTPOINT" | sed 's|/$||g')
+    fi
+    do_multiple "$DO_ACTION" "$MOUNTPOINT"
+    report_subvols_excluded "$MOUNTPOINT" >> "$TMP_EXCL"
+    report_snapshot_dirs "$MOUNTPOINT" >> "$TMP_DIRS"
+    list_subvolumes "$MOUNTPOINT" | {
+        while read SUBVOL; do
+            do_multiple "$DO_ACTION" "$SUBVOL"
+            report_snapshot_dirs "$SUBVOL" >> "$TMP_DIRS"
+        done
+    }
+}
+
+do_mountpoints() {
+    TMP_EXCL=$(mktemp)
+    TMP_DIRS=$(mktemp)
+    if [ "$#" = 0 ]; then
+        list_btrfs_mountpoints | {
+            while read MOUNTPOINT; do
+                do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
+            done
+        }
+    else
+        for MOUNTPOINT in "$@"; do
+            do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
+        done
+    fi
+    if [ -s "$TMP_EXCL" ]; then
+        echo ""
+        cat "$TMP_EXCL"
+    fi
+    if [ -s "$TMP_DIRS" ]; then
+        echo ""
+        cat "$TMP_DIRS"
+    fi
+    rm "$TMP_EXCL"
+    rm "$TMP_DIRS"
+}
+
 if [ -z "$1" -a "$DO_ALL" != "1" ]; then
     pod2usage -exit 0 "$0"
     echo "ERROR: Missing argument" >&2
@@ -494,30 +556,9 @@ elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
 elif [ "$DO_ALL" = "1" ]; then
     assert_btrfs_tools
     if [ -z "$1" ]; then
-        for MOUNTPOINT in $(list_btrfs_mountpoints); do
-            do_multiple "$DO_ACTION" "$MOUNTPOINT"
-            SVTMP=$(mktemp)
-            list_subvolumes "$MOUNTPOINT" > "$SVTMP"
-            while read SUBVOL
-            do
-                do_multiple "$DO_ACTION" "$SUBVOL"
-            done < "$SVTMP"
-            rm "$SVTMP"
-            report_subvols_excluded "$MOUNTPOINT" >&2
-        done
-    elif [ -z "$2" ]; then
-        # Repeat the container filesystem here, so that it's included
-        do_multiple "$DO_ACTION" "$1"
-        # We write list_subvolumes to a file otherwise we clog up stdin from
-        # things in do_multiple which also use while read foo
-        SVTMP=$(mktemp)
-        list_subvolumes "$1" > "$SVTMP"
-        while read SUBVOL
-        do
-            do_multiple "$DO_ACTION" "$SUBVOL"
-        done < "$SVTMP"
-        rm "$SVTMP"
-        report_subvols_excluded "$1" >&2
+        do_mountpoints
+    elif [ -n "$1" -a -z "$2" ]; then
+        do_mountpoints "$1"
     else
         pod2usage -exit 0 "$0"
         echo "ERROR: Extraneous argument '$2'" >&2
