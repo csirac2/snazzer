@@ -1,17 +1,28 @@
 #!/bin/sh
 
 set -e
-SNAZZER_VERSION=0.2
+SNAZZER_VERSION=0.3
 
 # Keep in sync with the POD!
-if [ -z "$SNAZZER_SIG_CMD" ]; then
-    SNAZZER_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-    --detach-sign -"
+default_snazzer_sig_func() {
+    gpg2 --quiet --no-greeting --batch --use-agent --armor --detach-sign -
+}
+# Keep in sync with the POD!
+if [ -z "$SNAZZER_SIG_ENABLE" ]; then
+    SNAZZER_SIG_ENABLE=1
 fi
 # Keep in sync with the POD!
 if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
     SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
 fi
+
+do_snazzer_sig() {
+    if type snazzer_sig_func | grep -i function >/dev/null; then
+        snazzer_sig_func
+    else
+        default_snazzer_sig_func
+    fi
+}
 
 get_date() {
     if [ "$SNAZZER_USE_UTC" = "1" ]; then
@@ -55,7 +66,9 @@ HERE
 }
 
 build_du_cmd() {
-    echo "du -bs --one-file-system --exclude-from '$1/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE' '$1'"
+    cat <<HERE
+(du -bs --one-file-system --exclude-from '$1/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE' '$1')
+HERE
 }
 
 do_du_cmd() {
@@ -113,7 +126,7 @@ measure_gpg() {
     cat <<HERE
 (SIG=\$(mktemp) && cat '$MEAS_FILE' | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $(build_tar_cmd "$DIR") | gpg2 --verify \$SIG -)
 HERE
-    eval "$SNAZZER_SIG_CMD"
+    do_snazzer_sig
     echo ""
 }
 
@@ -153,7 +166,7 @@ measure() {
     #measure_latest "$MEAS_DIR"
     # Sometimes, it's mildly faster to run sha512sum and gpg signing in parallel
     # especially on I/O starved VMs.
-    if [ "$SNAZZER_SIG_CMD" != " " ]; then
+    if [ "$SNAZZER_SIG_ENABLE" != "0" ]; then
         assert_gpg_secring_excluded
         # Put the fifo somewhere it can't be listed by anyone except us, and
         # especially set permissions so that it can only be read by us.
@@ -278,13 +291,18 @@ The output includes:
 
 =over
 
-=item * SNAZZER_SIG_CMD
+=item * snazzer_sig_func
 
-Command to generate PGP SIGNATURE text. Takes input from stdin, output to
-stdout. Signatures can be disabled with C<SNAZZER_SIG_CMD=' '>. Default:
+Function generating PGP SIGNATURE text. Takes input from stdin, output to
+stdout. Signatures can be disabled with L<SNAZZER_SIG_ENABLE>. Default:
 
-  DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-      --detach-sign -"
+    snazzer_sig_func() {
+        gpg2 --quiet --no-greeting --batch --use-agent --armor --detach-sign -
+    }
+
+=item * SNAZZER_SIG_ENABLE
+
+If set to 0, GPG signing is disabled and snazzer_sig_func() is not called.
 
 =item * SNAZZER_MEASUREMENTS_EXCLUDE_FILE
 
