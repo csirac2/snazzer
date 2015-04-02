@@ -42,19 +42,19 @@ fi
 # So, mountpoint(1) returns true if the path is a btrfs subvolume root, but we
 # want to know if the path is a btrfs *filesystem* root. Hence the df/grep crazy
 assert_mountpoint() {
-    DIR_ESC=$(readlink -f "$1" | sed "s/'/'\\\\''/g")
-    DIR_ESC_GREP=$(echo "$DIR_ESC" | sed 's|[$.^]|\\&|g')
-    if ! eval "mountpoint -q '$DIR_ESC'" || \
-        ! eval "df | grep -c '$DIR_ESC_GREP\$' >/dev/null"; then
-        echo "ERROR: '$DIR_ESC' is not a filesystem mountpoint" >&2
+    DIR=$(readlink -f "$1")
+    DIR_GREP=$(echo "$DIR" | sed 's|[$.^]|\\&|g')
+    if ! mountpoint -q "$DIR" || \
+        ! df | grep -c "$DIR_GREP\$" >/dev/null; then
+        echo "ERROR: $DIR is not a filesystem mountpoint" >&2
         exit 2
     fi
 }
 
 assert_subvolume() {
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    if ! eval "$SUDO btrfs subvolume show '$DIR_ESC' >/dev/null 2>&1"; then
-        echo "ERROR: '$DIR_ESC' is not a btrfs subvolume" >&2
+    DIR=$1
+    if ! $SUDO btrfs subvolume show "$DIR" >/dev/null 2>&1; then
+        echo "ERROR: $DIR is not a btrfs subvolume" >&2
         exit 3
     fi
 }
@@ -67,17 +67,16 @@ assert_btrfs_tools() {
 }
 
 glob2grep_file() {
-    FILE_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
+    FILE=$1
     OUT=$(mktemp)
 
-    eval "$SUDO cat '$FILE_ESC'" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
+    $SUDO cat "$FILE" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
 
     echo "$OUT"
 }
 
 list_subvolumes() {
     DIR="$1"
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     DO_INVERT="$2"
     if [ "$DO_INVERT" = "--excluded" ]; then
         GREP="grep"
@@ -89,7 +88,7 @@ list_subvolumes() {
             DIR="$DIR/"
     fi
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
-    eval "$SUDO btrfs subvolume list -t '$DIR_ESC'" | tail -n+3 | \
+    $SUDO btrfs subvolume list -t "$DIR" | tail -n+3 | \
         $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
         sed 's/^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*//g' | \
         while read SUBVOL; do echo "${DIR}$SUBVOL"; done
@@ -120,11 +119,11 @@ list_btrfs_mountpoints() {
 }
 
 get_subvol_path() {
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    UUID=$(eval "$SUDO btrfs subvolume show '$DIR_ESC'" | \
+    DIR=$1
+    UUID=$($SUDO btrfs subvolume show "$DIR" | \
         sed -n 's/^[ \t]*uuid:[ \t]*\(.*\)/\1/p')
     if [ -n "$UUID" ]; then
-        eval "$SUDO btrfs subvolume list -u '$DIR_ESC'" | \
+        $SUDO btrfs subvolume list -u "$DIR" | \
             sed -n "s/^.*$UUID[ \t]*path[ \t]*\\(.*\\)/\\1/p"
     fi
 }
@@ -132,30 +131,44 @@ get_subvol_path() {
 # List the excluded subvols relative to DIR
 list_excluded_subvols() {
     DIR="$1"
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    SUBVOL_PATH_ESC=$(get_subvol_path "$DIR" | sed -e 's/[]$*.^|[]/\\&/g' | \
-        sed "s/'/'\\\\''/g")
-    eval "$SUDO btrfs subvolume list -o '$DIR_ESC' | grep -v '\\.snapshotz' | \
-        sed -n 's|.*path $SUBVOL_PATH_ESC[/]*\\(.*\\)|\\1|p'"
+    SUBVOL_PATH_ESC=$(get_subvol_path "$DIR" | sed -e 's/[]$*.^|[]/\\&/g')
+    $SUDO btrfs subvolume list -o "$DIR" | grep -v '\.snapshotz' | \
+        sed -n "s|.*path $SUBVOL_PATH_ESC[/]*\\(.*\\)|\\1|p"
 }
 
 assert_missing() {
-    THING_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    if eval "$SUDO test -e '$THING_ESC'"; then
+    THING=$1
+    if $SUDO test -e "$THING"; then
         cat <<HERE >&2
-ERROR: '$THING_ESC' exists, aborting
+ERROR: $THING exists, aborting
 HERE
         exit 6
     fi
 }
 
 assert_exists() {
-    THING_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    if ! eval "$SUDO test -e '$THING_ESC'"; then
+    THING=$1
+    if ! $SUDO test -e "$THING"; then
         cat <<HERE >&2
-ERROR: '$THING_ESC' is missing, aborting
+ERROR: $THING is missing, aborting
 HERE
         exit 4
+    fi
+}
+
+report_snapshot_dirs() {
+    SUBVOL="$1"
+
+    if [ "$DO_ACTION" = "snapshot" -a "$SUBVOL" = "/" ]; then
+        SUBVOL_MNT=$(df --output=target "$SUBVOL" | tail -n+2)
+        for DIR in "/tmp" "/var/tmp" "/var/cache" "/var/log"; do
+            DIR_MNT=$(df --output=target "$DIR" | tail -n+2)
+            if [ "$DIR_MNT" = "$SUBVOL_MNT" ]; then
+                cat <<HERE
+WARN: snapshot of $SUBVOL includes $DIR directory, is this what you wanted?
+HERE
+            fi
+        done
     fi
 }
 
@@ -169,110 +182,132 @@ build_snapshot_cmd() {
         EXCL_FILE_ESC="${SUBVOL_ESC}/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     fi
 
-    # The stdin/out cat below, is in case we're leaning on sudo...
+    # The cat | tee below, is in case we're leaning on sudo...
     cat <<HERE
 cat <<EXCL | $SUDO tee '$EXCL_FILE_ESC' >/dev/null
 .snapshotz
 .snapshotz/*
 $SNAZZER_MEASUREMENTS_EXCLUDE_FILE
-$( eval "list_excluded_subvols '$SUBVOL_ESC'" | sed -e 's|[`$]|\\&|g')
+$( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
 $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
 $SUDO rm '$EXCL_FILE_ESC'
 HERE
 }
 
-report_snapshot_dirs() {
-    SUBVOL="$1"
-
-    if [ "$DO_ACTION" = "snapshot" -a "$SUBVOL" = "/" ]; then
-        SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-        SUBVOL_MNT=$(eval "df --output=target '$SUBVOL'" | tail -n+2)
-        for DIR in "/tmp" "/var/tmp" "/var/cache" "/var/log"; do
-            DIR_MNT=$(eval "df --output=target '$DIR'" | tail -n+2)
-            if [ "$DIR_MNT" = "$SUBVOL_MNT" ]; then
-                cat <<HERE
-WARN: snapshot of $SUBVOL includes $DIR directory, is this what you wanted?
-HERE
-            fi
-        done
+do_snapshot_cmd() {
+    SUBVOL=$1
+    SNAP_DIR=$2
+    if [ "$SUBVOL" = "/" ]; then
+        EXCL_FILE="/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    else
+        EXCL_FILE="$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     fi
+
+    # The cat | tee below, is in case we're leaning on sudo...
+cat <<EXCL | $SUDO tee "$EXCL_FILE" >/dev/null
+.snapshotz
+.snapshotz/*
+$SNAZZER_MEASUREMENTS_EXCLUDE_FILE
+$( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
+EXCL
+$SUDO btrfs subvolume snapshot -r "$SUBVOL" "$SNAP_DIR"
+$SUDO rm "$EXCL_FILE"
 }
 
 snapshot() {
     SUBVOL="$1"
-    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     assert_subvolume "$SUBVOL"
     assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     if [ "$SUBVOL" = "/" ]; then
         DEST="/.snapshotz"
-        DEST_ESC="/.snapshotz"
     else
         DEST="$SUBVOL/.snapshotz"
-        DEST_ESC="$SUBVOL_ESC/.snapshotz"
     fi
-    eval "$SUDO mkdir -p '$DEST_ESC' --mode=$SNAZZER_SNAPSHOTZ_PERMS"
+    $SUDO mkdir -p "$DEST" --mode=$SNAZZER_SNAPSHOTZ_PERMS
     if [ "$DRY_RUN" = "1" ]; then
-        CMD="cat"
+        build_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE"
     else
-        CMD="/bin/sh -e"
+        do_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE"
     fi
-    build_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE" | $CMD
     assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 }
 
 list_dirs() {
-    DIR_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    eval "$SUDO ls -F '$DIR_ESC'" | sed -n 's|^\(.*\)/$|\1|p'
+    DIR=$1
+    $SUDO ls -F "$DIR" | sed -n 's|^\(.*\)/$|\1|p'
 }
 
 # List directories to be pruned under a foo/.snapshotz dir, newline separated.
 prune_shotz_dirs() {
     SUBVOL_SHOTZ="$1"
-    SUBVOL_SHOTZ_ESC=$(echo "$SUBVOL_SHOTZ" | sed "s/'/'\\\\''/g")
     assert_missing "$SUBVOL_SHOTZ/.incomplete"
-    eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'" | snazzer-prune-candidates | \
+    $SUDO ls "$SUBVOL_SHOTZ" | snazzer-prune-candidates | \
         while read SNAP_NAME; do echo "$SUBVOL_SHOTZ/$SNAP_NAME"; done
 }
 
 # We can't just use ls --quoting-style=shell feature, this makes
 # snazzer-prune-candidates sad when the last char in a line is '
 build_prune_cmd() {
-    PRUNE_LIST=$(echo -n "'"; echo -n "$1" | sed "s/'/'\\\\''/g" | \
+    PRUNE_LIST_ESC=$(echo -n "'"; echo -n "$1" | sed "s/'/'\\\\''/g" | \
         sed ":a;N;\$!ba;s/\\n/' '/g"; echo -n "'")
     cat <<HERE
-$SUDO btrfs subvolume delete $PRUNE_LIST
+$SUDO btrfs subvolume delete $PRUNE_LIST_ESC
 HERE
+}
+
+do_prune_cmd() {
+    PRUNE_LIST="$1"
+    shift
+    # SMELL Yeah... this <<<EOF>>> hack is ugly, I should really rewrite in a
+    # real language. We build up "$@" as a less insecure way to construct a
+    # potentially hostile string which can be passed safely to btrfs. If we
+    # invoked btrfs after/outside the while loop, "$@" goes out of scope (RHS of
+    # pipe - with while read - is in its own subshell). So, we put an unlikely
+    # string at the end which we use to detect on the last iteration of the
+    # loop while "$@" is still in scope so that we can use it. This avoids eval
+    # or | /bin/sh tricks, and mktemp. Or, we could just invoke btrfs subvolume
+    # delete foreach snapshot. After writing all this, the performance loss is
+    # probably worth it for the code clarity... Okay, TODO: decide if we care
+    # about rolling up btrfs snapshot pruning into these larger transactions...
+    (
+        IFS=
+        echo "$PRUNE_LIST
+<<<<EOF>>>>" | while read ITEM; do
+            if [ "$ITEM" = "<<<<EOF>>>>" ]; then
+                $SUDO btrfs subvolume delete "$@"
+            else
+                set -- "$@" "$ITEM"
+            fi
+        done
+    )
 }
 
 prune() {
     SUBVOL="$1"
-    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     if [ "$SUBVOL" = "/" ]; then
         SUBVOL_SHOTZ="/.snapshotz"
-        SUBVOL_SHOTZ_ESC="/.snapshotz"
     else
         SUBVOL_SHOTZ="$SUBVOL/.snapshotz"
-        SUBVOL_SHOTZ_ESC="$SUBVOL_ESC/.snapshotz"
     fi
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
     NUM_PRUNE=$(echo "$PRUNE_LIST" | grep . | wc -l)
     NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep . | wc -l)
-    echo "'$SUBVOL_SHOTZ_ESC': pruning $NUM_PRUNE of $NUM_AVAIL"
-    if [ "$DRY_RUN" = "0" -a "$DO_FORCE" = "1" ]; then
-        CMD="/bin/sh -e"
-    elif [ "$DRY_RUN" = "1" ]; then
-        CMD="cat"
-    else
+    echo "$SUBVOL_SHOTZ: pruning $NUM_PRUNE of $NUM_AVAIL"
+    if [ "$DRY_RUN" != "1" -a "$DO_FORCE" != "1" ]; then
         echo "ERROR: --prune expected --force or --dry-run" >&2
         exit 5
     fi
     if [ "$NUM_PRUNE" != "0" ]; then
         if [ -n "$PRUNE_LIST" ]; then
-            build_prune_cmd "$PRUNE_LIST" | $CMD | \
-                grep -v 'Transaction commit: none (default)'
+            if [ "$DRY_RUN" = "1" ]; then
+                build_prune_cmd "$PRUNE_LIST"
+            else
+                do_prune_cmd "$PRUNE_LIST" | \
+                    grep -v 'Transaction commit: none (default)'
+            fi
         fi
     fi
 }
@@ -304,8 +339,8 @@ HERE
 }
 
 measure_unlock() {
-    eval "$SUDO rm '$SNAZZER_MEAS_LOCK_DIR/pid'"
-    eval "$SUDO rmdir '$SNAZZER_MEAS_LOCK_DIR'"
+    $SUDO rm "$SNAZZER_MEAS_LOCK_DIR/pid"
+    $SUDO rmdir "$SNAZZER_MEAS_LOCK_DIR"
 }
 
 build_measure_cmd() {
@@ -317,40 +352,42 @@ snazzer-measure '$SUBVOL_ESC' >> '$REPORT_ESC';
 HERE
 }
 
+do_measure_cmd() {
+    SUBVOL="$1"
+    REPORT="$2"
+    snazzer-measure "$SUBVOL" >> "$REPORT";
+}
+
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
 # to already have made a measurement in the past
 measure() {
     SUBVOL="$1"
-    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    OLD_PWD_ESC=$(pwd | sed "s/'/'\\\\''/g")
     if [ "$SUBVOL" = "/" ]; then
         SUBVOL_SHOTZ="/.snapshotz"
-        SUBVOL_SHOTZ_ESC="/.snapshotz"
     else
         SUBVOL_SHOTZ="$SUBVOL/.snapshotz"
-        SUBVOL_SHOTZ_ESC="$SUBVOL_ESC/.snapshotz"
     fi
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     measure_lock
-    if ! eval "$SUDO test -e '$SUBVOL_SHOTZ_ESC/.measurements'"; then
-        eval "$SUDO mkdir '$SUBVOL_SHOTZ_ESC/.measurements'"
+    if ! $SUDO test -e "$SUBVOL_SHOTZ/.measurements"; then
+        $SUDO mkdir "$SUBVOL_SHOTZ/.measurements"
     fi
-    SNAP_LIST_AVAIL=$(eval "$SUDO ls '$SUBVOL_SHOTZ_ESC'")
+    SNAP_LIST_AVAIL=$($SUDO ls "$SUBVOL_SHOTZ")
     if [ "$DO_FORCE" = "1" ]; then
         SNAP_LIST="$SNAP_LIST_AVAIL"
     else
         # Collect measurements that don't mention our hostname
-        SNAP_LIST=$(eval "$SUDO grep -rsL '^> on $(hostname) at' \
-            '$SUBVOL_SHOTZ_ESC/.measurements'" | \
+        SNAP_LIST=$($SUDO grep -rsL "^> on $(hostname) at" \
+            "$SUBVOL_SHOTZ/.measurements" | \
             while read SNAP_FULLPATH; do basename "$SNAP_FULLPATH"; done)
         # Collect snapshot names without any measurements at all
         # SMELL: What a nasty way to do this. We're trying to limit the number
         # of different things a $SUDO user would need to open up in sudoers, but
         # that's a pretty terribly tedious use-case.
         SNAP_MISSING=$(echo "$SNAP_LIST_AVAIL" | while read SNAP_NAME
-            do eval "$SUDO test -e \
-                '$SUBVOL_SHOTZ_ESC/.measurements/$SNAP_NAME'" || \
+            do $SUDO test -e \
+                "$SUBVOL_SHOTZ/.measurements/$SNAP_NAME" || \
                     echo "$SNAP_NAME"
             done)
         SNAP_LIST=$(echo "$SNAP_LIST"; echo "$SNAP_MISSING")
@@ -358,22 +395,24 @@ measure() {
     # grep . so we don't count final newline
     NUM_MEAS=$( echo "$SNAP_LIST" | grep . | wc -l )
     NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep . | wc -l)
-    echo "'$SUBVOL_ESC': measuring $NUM_MEAS of $NUM_AVAIL"
-    if [ "$DRY_RUN" = "1" ]; then
-        CMD="cat"
-        PREPOST_CMD="echo"
-    else
-        CMD="/bin/sh -e"
-        PREPOST_CMD="eval"
-    fi
+    echo "$SUBVOL: measuring $NUM_MEAS of $NUM_AVAIL"
     if [ -n "$SNAP_LIST" ]; then
-        $PREPOST_CMD "cd '$SUBVOL_SHOTZ_ESC/.measurements'"
-        echo "$SNAP_LIST" | grep . | while read SNAP_NAME
-        do
-            echo "echo '  $SNAP_NAME'" | $CMD
-            build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME" | $CMD
-        done
-        $PREPOST_CMD "cd '$OLD_PWD_ESC'"
+        if [ "$DRY_RUN" = "1" ]; then
+            echo "cd '$( echo "$SUBVOL_SHOTZ/.measurements" | \
+                sed "s|'|'\\\\''|g")'"
+            echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
+                echo "echo '  $SNAP_NAME'"
+                build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME"
+            done
+        else
+            (
+                cd "$SUBVOL_SHOTZ/.measurements"
+                echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
+                    echo "  $SNAP_NAME"
+                    do_measure_cmd "../$SNAP_NAME" "$SNAP_NAME"
+                done
+            )
+        fi
     fi
     measure_unlock
 }
@@ -430,24 +469,22 @@ test_img_write() {
 
 test_img_populate() {
     MNT="$1"
-    OLD_PWD_ESC=$(pwd | sed "s/'/'\\\\''/g")
-    cd "$MNT"
+    if [ "$MNT" = "/" ]; then MNT=""; fi
     for SUBVOL in srv home etc/secrets var/lib/docker/btrfs var/cache \
         usr/local/src "this is/something with/spaces in it" \
         'BAM_$(ls *)/`echo sierra`' \
         'echo `ls "/"; ls /;`; ~!@#$%^&*()_+-='"'"'[]'"'"'{}|:<>,./?'; do
         SUBVOL_PARENT="$(dirname "$SUBVOL")"
         SUBVOL_NAME="$(basename "$SUBVOL")"
-        mkdir -p "$SUBVOL_PARENT"
-        btrfs subvolume create "$SUBVOL"
-        test_img_write "$SUBVOL/${SUBVOL_NAME}_junk" 500K
+        mkdir -p "$MNT/$SUBVOL_PARENT"
+        btrfs subvolume create "$MNT/$SUBVOL"
+        test_img_write "$MNT/$SUBVOL/${SUBVOL_NAME}_junk" 500K
         if [ "$SUBVOL_PARENT" = "." ]; then
-            test_img_write "${SUBVOL_NAME}_junk" 500K
+            test_img_write "$MNT/${SUBVOL_NAME}_junk" 500K
         else
-            test_img_write "${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
+            test_img_write "$MNT/${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
         fi
     done
-    eval "cd '$OLD_PWD_ESC'"
 }
 
 test_img_create() {
