@@ -16,10 +16,10 @@ a part of perl core):
     snazzer-prune-candidates --man
     
 Also viewable online at:
-* https://github.com/csirac2/snazzer/blob/master/snazzer.md
-* https://github.com/csirac2/snazzer/blob/master/snazzer-measure.md
-* https://github.com/csirac2/snazzer/blob/master/snazzer-receive.md
-* https://github.com/csirac2/snazzer/blob/master/snazzer-prune-candidates.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-measure.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-receive.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-prune-candidates.md
 
 Generate a test btrfs image and mount it:
 
