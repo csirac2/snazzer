@@ -38,13 +38,13 @@ host_datetime() {
 }
 
 build_tar_cmd() {
-    DIR=$1
+    DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
 
-    cat <<HERE
-cd '$DIR' && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | \
+    cat <<CMD
+cd '$DIR_ESC' && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | \
 tar --null -T - --no-recursion --preserve-permissions --one-file-system -c \
 --to-stdout --exclude-from '$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
-HERE
+CMD
 }
 
 do_tar() {
@@ -59,16 +59,17 @@ measure_sha512sum() {
     DIR=$1
 
     host_datetime "sha512sum"
-    cat <<HERE
+    cat <<CMD
 ($(build_tar_cmd "$DIR") | sha512sum -b)
 $(sha512sum -b)
-HERE
+CMD
 }
 
 build_du_cmd() {
-    cat <<HERE
-(du -bs --one-file-system --exclude-from '$1/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE' '$1')
-HERE
+    DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
+    cat <<CMD
+(du -bs --one-file-system --exclude-from '$DIR_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE' '$DIR_ESC')
+CMD
 }
 
 do_du() {
@@ -88,12 +89,13 @@ build_find_excl_switch() {
 }
 
 dry_find() {
+    DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     EXCL=$(build_find_excl_switch "$1")
-    cat <<HERE
-find '$1' -xdev -not -name '.' -path '/tmp' -prune -o $EXCL -type f \
+    cat <<CMD
+find '$DIR_ESC' -xdev -not -name '.' -path '/tmp' -prune -o $EXCL -type f \
     -printf "%T@ '%p'\\\n" | sort -n | tail -1 | cut -f2- -d" " | \
     xargs ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
-HERE
+CMD
 }
 
 measure_latest() {
@@ -123,9 +125,9 @@ measure_gpg() {
     MEAS_FILE=$(basename "$DIR")
     HOST_DATETIME=$(host_datetime "gpg")
     echo "$HOST_DATETIME"
-    cat <<HERE
+    cat <<CMD
 (SIG=\$(mktemp) && cat '$MEAS_FILE' | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $(build_tar_cmd "$DIR") | gpg2 --verify \$SIG -)
-HERE
+CMD
     do_snazzer_sig
     echo ""
 }
