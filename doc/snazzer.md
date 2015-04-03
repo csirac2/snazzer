@@ -107,13 +107,13 @@ snapshots already measured by current hostname
     If you have manually mounted subvolumes under mountpoints inconsistent with this
     assumption, breakage will occur.
 
-- SNAZZER\_SUBVOLS\_EXCLUDE\_FILE is used with grep -v
+- SNAZZER\_SUBVOLS\_EXCLUDE\_FILE is used with grep -f
 
     A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
-    patterns in this file to a regex suitable for grep -v. The assumption is that
+    patterns in this file to a regex suitable for grep -f. The assumption is that
     the exclude patterns file should only contain "boring" paths. Obvious regex
-    characters are escaped, however there are likely many possible hostile path glob
-    patterns which will break things.
+    characters are escaped, however there are likely hostile path glob patterns
+    which will break things.
 
 - .snapshot\_measurements.exclude is a work-around to the btrfs atime bug
 

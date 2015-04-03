@@ -76,8 +76,8 @@ glob2grep_file() {
 }
 
 list_subvolumes() {
-    DIR="$1"
-    DO_INVERT="$2"
+    DIR=$1
+    DO_INVERT=$2
     if [ "$DO_INVERT" = "--excluded" ]; then
         GREP="grep"
     else
@@ -96,7 +96,7 @@ list_subvolumes() {
 }
 
 report_subvols_excluded() {
-    DIR="$1"
+    DIR=$1
     NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
 
     if [ "$NUM" != "0" ]; then
@@ -130,7 +130,7 @@ get_subvol_path() {
 
 # List the excluded subvols relative to DIR
 list_excluded_subvols() {
-    DIR="$1"
+    DIR=$1
     SUBVOL_PATH_ESC=$(get_subvol_path "$DIR" | sed -e 's/[]$*.^|[]/\\&/g')
     $SUDO btrfs subvolume list -o "$DIR" | grep -v '\.snapshotz' | \
         sed -n "s|.*path $SUBVOL_PATH_ESC[/]*\\(.*\\)|\\1|p"
@@ -157,7 +157,7 @@ HERE
 }
 
 report_snapshot_dirs() {
-    SUBVOL="$1"
+    SUBVOL=$1
 
     if [ "$DO_ACTION" = "snapshot" -a "$SUBVOL" = "/" ]; then
         SUBVOL_MNT=$(df --output=target "$SUBVOL" | tail -n+2)
@@ -172,30 +172,30 @@ HERE
     fi
 }
 
-build_snapshot_cmd() {
-    SUBVOL="$1"
-    SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
-    SNAP_DIR_ESC=$(echo "$2" | sed "s/'/'\\\\''/g")
+dry_snapshot() {
+    SUBVOL=$1
+    SUBVOL_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
+    SNAP_DIR_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
     if [ "$SUBVOL" = "/" ]; then
         EXCL_FILE_ESC="/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     else
-        EXCL_FILE_ESC="${SUBVOL_ESC}/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+        EXCL_FILE_ESC="$SUBVOL_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     fi
 
     # The cat | tee below, is in case we're leaning on sudo...
-    cat <<HERE
-cat <<EXCL | $SUDO tee '$EXCL_FILE_ESC' >/dev/null
+    cat <<CMD
+    cat <<EXCL | $SUDO tee "$EXCL_FILE_ESC" >/dev/null
 .snapshotz
 .snapshotz/*
 $SNAZZER_MEASUREMENTS_EXCLUDE_FILE
 $( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
-$SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
-$SUDO rm '$EXCL_FILE_ESC'
-HERE
+    $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
+    $SUDO rm '$EXCL_FILE_ESC'
+CMD
 }
 
-do_snapshot_cmd() {
+do_snapshot() {
     SUBVOL=$1
     SNAP_DIR=$2
     if [ "$SUBVOL" = "/" ]; then
@@ -205,18 +205,18 @@ do_snapshot_cmd() {
     fi
 
     # The cat | tee below, is in case we're leaning on sudo...
-cat <<EXCL | $SUDO tee "$EXCL_FILE" >/dev/null
+    cat <<EXCL | $SUDO tee "$EXCL_FILE" >/dev/null
 .snapshotz
 .snapshotz/*
 $SNAZZER_MEASUREMENTS_EXCLUDE_FILE
 $( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
-$SUDO btrfs subvolume snapshot -r "$SUBVOL" "$SNAP_DIR"
-$SUDO rm "$EXCL_FILE"
+    $SUDO btrfs subvolume snapshot -r "$SUBVOL" "$SNAP_DIR"
+    $SUDO rm "$EXCL_FILE"
 }
 
 snapshot() {
-    SUBVOL="$1"
+    SUBVOL=$1
     assert_subvolume "$SUBVOL"
     assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
     if [ "$SUBVOL" = "/" ]; then
@@ -226,9 +226,9 @@ snapshot() {
     fi
     $SUDO mkdir -p "$DEST" --mode=$SNAZZER_SNAPSHOTZ_PERMS
     if [ "$DRY_RUN" = "1" ]; then
-        build_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE"
+        dry_snapshot "$SUBVOL" "$DEST/$SNAZZER_DATE"
     else
-        do_snapshot_cmd "$SUBVOL" "$DEST/$SNAZZER_DATE"
+        do_snapshot "$SUBVOL" "$DEST/$SNAZZER_DATE"
     fi
     assert_missing "$SUBVOL/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 }
@@ -240,36 +240,36 @@ list_dirs() {
 
 # List directories to be pruned under a foo/.snapshotz dir, newline separated.
 prune_shotz_dirs() {
-    SUBVOL_SHOTZ="$1"
+    SUBVOL_SHOTZ=$1
     assert_missing "$SUBVOL_SHOTZ/.incomplete"
     $SUDO ls "$SUBVOL_SHOTZ" | snazzer-prune-candidates | \
         while read SNAP_NAME; do echo "$SUBVOL_SHOTZ/$SNAP_NAME"; done
 }
 
-# We can't just use ls --quoting-style=shell feature, this makes
-# snazzer-prune-candidates sad when the last char in a line is '
-build_prune_cmd() {
-    PRUNE_LIST_ESC=$(echo -n "'"; echo -n "$1" | sed "s/'/'\\\\''/g" | \
-        sed ":a;N;\$!ba;s/\\n/' '/g"; echo -n "'")
-    cat <<HERE
-$SUDO btrfs subvolume delete $PRUNE_LIST_ESC
-HERE
+dry_prune() {
+    PRUNE_LIST=$1
+    shift
+    cat <<CMD
+    $(
+        IFS=
+        echo "$PRUNE_LIST
+<<<<EOF>>>>" | while read ITEM; do
+            if [ "$ITEM" = "<<<<EOF>>>>" ]; then
+                echo $SUDO btrfs subvolume delete "$@"
+            else
+                set -- "$@" "'$(echo "$ITEM" | sed "s|'|'\\\\''|g")'"
+            fi
+        done
+    )
+CMD
 }
 
-do_prune_cmd() {
-    PRUNE_LIST="$1"
+# SMELL: Ugly "while read" variable scope limitation work-around. Build up "$@"
+# to be used safely w/btrfs. <<<EOF>>> is an unlikely string marking end of list
+# at which point we make use of "$@" while it's still in scope.
+do_prune() {
+    PRUNE_LIST=$1
     shift
-    # SMELL Yeah... this <<<EOF>>> hack is ugly, I should really rewrite in a
-    # real language. We build up "$@" as a less insecure way to construct a
-    # potentially hostile string which can be passed safely to btrfs. If we
-    # invoked btrfs after/outside the while loop, "$@" goes out of scope (RHS of
-    # pipe - with while read - is in its own subshell). So, we put an unlikely
-    # string at the end which we use to detect on the last iteration of the
-    # loop while "$@" is still in scope so that we can use it. This avoids eval
-    # or | /bin/sh tricks, and mktemp. Or, we could just invoke btrfs subvolume
-    # delete foreach snapshot. After writing all this, the performance loss is
-    # probably worth it for the code clarity... Okay, TODO: decide if we care
-    # about rolling up btrfs snapshot pruning into these larger transactions...
     (
         IFS=
         echo "$PRUNE_LIST
@@ -284,7 +284,7 @@ do_prune_cmd() {
 }
 
 prune() {
-    SUBVOL="$1"
+    SUBVOL=$1
     if [ "$SUBVOL" = "/" ]; then
         SUBVOL_SHOTZ="/.snapshotz"
     else
@@ -303,9 +303,9 @@ prune() {
     if [ "$NUM_PRUNE" != "0" ]; then
         if [ -n "$PRUNE_LIST" ]; then
             if [ "$DRY_RUN" = "1" ]; then
-                build_prune_cmd "$PRUNE_LIST"
+                dry_prune "$PRUNE_LIST"
             else
-                do_prune_cmd "$PRUNE_LIST" | \
+                do_prune "$PRUNE_LIST" | \
                     grep -v 'Transaction commit: none (default)'
             fi
         fi
@@ -343,7 +343,7 @@ measure_unlock() {
     $SUDO rmdir "$SNAZZER_MEAS_LOCK_DIR"
 }
 
-build_measure_cmd() {
+dry_measure() {
     SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     REPORT_ESC=$(echo "$2" | sed "s/'/'\\\\''/g")
 
@@ -352,16 +352,16 @@ snazzer-measure '$SUBVOL_ESC' >> '$REPORT_ESC';
 HERE
 }
 
-do_measure_cmd() {
-    SUBVOL="$1"
-    REPORT="$2"
+do_measure() {
+    SUBVOL=$1
+    REPORT=$2
     snazzer-measure "$SUBVOL" >> "$REPORT";
 }
 
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
 # to already have made a measurement in the past
 measure() {
-    SUBVOL="$1"
+    SUBVOL=$1
     if [ "$SUBVOL" = "/" ]; then
         SUBVOL_SHOTZ="/.snapshotz"
     else
@@ -402,14 +402,14 @@ measure() {
                 sed "s|'|'\\\\''|g")'"
             echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
                 echo "echo '  $SNAP_NAME'"
-                build_measure_cmd "../$SNAP_NAME" "$SNAP_NAME"
+                dry_measure "../$SNAP_NAME" "$SNAP_NAME"
             done
         else
             (
                 cd "$SUBVOL_SHOTZ/.measurements"
                 echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
                     echo "  $SNAP_NAME"
-                    do_measure_cmd "../$SNAP_NAME" "$SNAP_NAME"
+                    do_measure "../$SNAP_NAME" "$SNAP_NAME"
                 done
             )
         fi
@@ -418,7 +418,7 @@ measure() {
 }
 
 do_multiple() {
-    DO_ACTION="$1"
+    DO_ACTION=$1
     shift
     for SUBVOL in "$@"; do
         # Remove trailing slash
@@ -462,13 +462,13 @@ do_multiple() {
 }
 
 test_img_write() {
-    FILE="$1"
-    SIZE="$2"
+    FILE=$1
+    SIZE=$2
     dd if=/dev/urandom of="$FILE" bs="$SIZE" count="1"
 }
 
 test_img_populate() {
-    MNT="$1"
+    MNT=$1
     if [ "$MNT" = "/" ]; then MNT=""; fi
     for SUBVOL in srv home etc/secrets var/lib/docker/btrfs var/cache \
         usr/local/src "this is/something with/spaces in it" \
@@ -488,7 +488,7 @@ test_img_populate() {
 }
 
 test_img_create() {
-    IMG="$1"
+    IMG=$1
     if [ -z "$IMG" ]; then
         echo "ERROR: --generate-test-img missing filename" >&2;
         exit 1;
@@ -538,9 +538,9 @@ HERE
 done
 
 do_mountpoint() {
-    MOUNTPOINT="$1"
-    TMP_EXCL="$2"
-    TMP_DIRS="$3"
+    MOUNTPOINT=$1
+    TMP_EXCL=$2
+    TMP_DIRS=$3
     # Remove trailing slash
     if [ "$MOUNTPOINT" != "/" ]; then
         MOUNTPOINT=$(echo "$MOUNTPOINT" | sed 's|/$||g')
@@ -740,13 +740,13 @@ An assumption has been made that a subvolume will mounted under the same path
 If you have manually mounted subvolumes under mountpoints inconsistent with this
 assumption, breakage will occur.
 
-=item * SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -v
+=item * SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -f
 
 A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
-patterns in this file to a regex suitable for grep -v. The assumption is that
+patterns in this file to a regex suitable for grep -f. The assumption is that
 the exclude patterns file should only contain "boring" paths. Obvious regex
-characters are escaped, however there are likely many possible hostile path glob
-patterns which will break things.
+characters are escaped, however there are likely hostile path glob patterns
+which will break things.
 
 =item * .snapshot_measurements.exclude is a work-around to the btrfs atime bug
 
