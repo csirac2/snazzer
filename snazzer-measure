@@ -136,9 +136,7 @@ assert_gpg_secring_excluded() {
         exit 10
     fi
     N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
-        xargs -I {} sh -c \
-        "(df -P -T {} | tail -n +2 | sed -n 's|[^ ]*  *\([^ ]*\).*|\1|p') | \
-            grep btrfs | wc -l")
+        (xargs df -t btrfs 2>/dev/null && echo 1) | wc -l)
     #N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
     #    grep -v -f /etc/snazzer/exclude.patterns | wc -l)
     GPG_SECRING=$(gpg2 --list-secret-keys | head -n 1)
