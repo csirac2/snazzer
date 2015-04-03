@@ -224,7 +224,7 @@ snapshot() {
     else
         DEST="$SUBVOL/.snapshotz"
     fi
-    $SUDO mkdir -p "$DEST" --mode=$SNAZZER_SNAPSHOTZ_PERMS
+    $SUDO mkdir -p "$DEST" --mode="$SNAZZER_SNAPSHOTZ_PERMS"
     if [ "$DRY_RUN" = "1" ]; then
         dry_snapshot "$SUBVOL" "$DEST/$SNAZZER_DATE"
     else
