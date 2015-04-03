@@ -47,7 +47,7 @@ tar --null -T - --no-recursion --preserve-permissions --one-file-system -c \
 HERE
 }
 
-do_tar_cmd() {
+do_tar() {
     DIR=$1
 
     cd "$DIR" && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | \
@@ -71,14 +71,14 @@ build_du_cmd() {
 HERE
 }
 
-do_du_cmd() {
+do_du() {
     DIR=$1
     du -bs --one-file-system --exclude-from \
         "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" "$DIR"
 }
 
 build_find_excl_switch() {
-    DIR="$1"
+    DIR=$1
     EXCL_FILE="$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 
     cat "$EXCL_FILE" | sed "s/'/'\\\\''/g" | while read RULE
@@ -87,7 +87,7 @@ build_find_excl_switch() {
     done
 }
 
-build_find_cmd() {
+dry_find() {
     EXCL=$(build_find_excl_switch "$1")
     cat <<HERE
 find '$1' -xdev -not -name '.' -path '/tmp' -prune -o $EXCL -type f \
@@ -97,7 +97,7 @@ HERE
 }
 
 measure_latest() {
-    FIND_CMD=$(build_find_cmd "$1")
+    FIND_CMD=$(dry_find "$1")
     host_datetime "find latest"
     echo "$FIND_CMD"
     echo ""
@@ -107,7 +107,7 @@ measure_du() {
     DIR=$1
     host_datetime "du bytes"
     build_du_cmd "$DIR"
-    do_du_cmd "$DIR"
+    do_du "$DIR"
     echo ""
 }
 
@@ -119,7 +119,7 @@ measure_tar_info() {
 }
 
 measure_gpg() {
-    DIR="$1"
+    DIR=$1
     MEAS_FILE=$(basename "$DIR")
     HOST_DATETIME=$(host_datetime "gpg")
     echo "$HOST_DATETIME"
@@ -160,8 +160,10 @@ feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
 # tar invocation inspired by
 # https://wiki.debian.org/ReproducibleBuilds/FileOrderInTarballs
 measure() {
-    MEAS_DIR="$1"
-    echo "#########################################"
+    MEAS_DIR=$1
+    cat <<HERE
+################################################################################
+HERE
     measure_du "$MEAS_DIR"
     #measure_latest "$MEAS_DIR"
     # Sometimes, it's mildly faster to run sha512sum and gpg signing in parallel
@@ -176,7 +178,7 @@ measure() {
         mkfifo --mode=0700 "$TMP_FIFO"
         SHA512_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
         GPG_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
-        (do_tar_cmd "$MEAS_DIR") | tee "$TMP_FIFO" | \
+        (do_tar "$MEAS_DIR") | tee "$TMP_FIFO" | \
             measure_sha512sum "$MEAS_DIR" > "$SHA512_MEASUREMENT" &
         sleep 1 # SMELLLLLL... avoid stupid race condition where it seems that
                 # measure_gpg starts before tee does
@@ -190,7 +192,7 @@ measure() {
         rm "$TMP_FIFO"
         rmdir "$TMP_DIR"
     else
-        (do_tar_cmd "$MEAS_DIR") | measure_sha512sum "$MEAS_DIR"
+        (do_tar "$MEAS_DIR") | measure_sha512sum "$MEAS_DIR"
     fi
     measure_tar_info
 }
@@ -247,7 +249,7 @@ along with commands to reproduce or verify data is unchanged
 
 =head1 DESCRIPTION
 
-Creates reproducable fingerprints of the content under a given directory, along
+Creates reproducible fingerprints of the content under a given directory, along
 with the commands necessary (relative to a sibling directory of the supplied
 path) to reproduce the measurement using only standard core GNU userland.
 
@@ -255,15 +257,15 @@ The output includes:
 
 =over
 
-=item * C<du -bs --time> (bytes used, most recently modified file datetime)
+=item * hostname and datetime of B<snazzer-measure> invocation
+
+=item * C<du -bs> (bytes used)
 
 =item * sha512sum of the result of a reproducible tarball of the directory
 
 =item * C<gpg2 --armor --sign> of the same
 
 =item * instructions for reproducing or verifying each of the above
-
-=item * hostname and datetime of B<snazzer-measure> invocation
 
 =item * C<tar --version>, C<tar --show-defaults>
 
@@ -317,6 +319,7 @@ Skip sanity check/abort when gpg secret key exists on a subvolume included in
 default snazzer snapshots
 
 =item * SNAZZER_USE_UTC
+
 Use UTC times of the form C<YYYY-MM-DDTHHMMSSZ> instead of the default local
 time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 

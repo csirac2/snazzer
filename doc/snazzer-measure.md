@@ -9,17 +9,17 @@ along with commands to reproduce or verify data is unchanged
 
 # DESCRIPTION
 
-Creates reproducable fingerprints of the content under a given directory, along
+Creates reproducible fingerprints of the content under a given directory, along
 with the commands necessary (relative to a sibling directory of the supplied
 path) to reproduce the measurement using only standard core GNU userland.
 
 The output includes:
 
-- `du -bs --time` (bytes used, most recently modified file datetime)
+- hostname and datetime of **snazzer-measure** invocation
+- `du -bs` (bytes used)
 - sha512sum of the result of a reproducible tarball of the directory
 - `gpg2 --armor --sign` of the same
 - instructions for reproducing or verifying each of the above
-- hostname and datetime of **snazzer-measure** invocation
 - `tar --version`, `tar --show-defaults`
 
 # OPTIONS
@@ -36,13 +36,18 @@ The output includes:
 
 # ENVIRONMENT
 
-- SNAZZER\_SIG\_CMD
+- snazzer\_sig\_func
 
-    Command to generate PGP SIGNATURE text. Takes input from stdin, output to
-    stdout. Signatures can be disabled with `SNAZZER_SIG_CMD=' '`. Default:
+    Function generating PGP SIGNATURE text. Takes input from stdin, output to
+    stdout. Signatures can be disabled with [SNAZZER\_SIG\_ENABLE](https://metacpan.org/pod/SNAZZER_SIG_ENABLE). Default:
 
-        DEFAULT_SIG_CMD="gpg2 --quiet --no-greeting --batch --use-agent --armor \
-            --detach-sign -"
+        snazzer_sig_func() {
+            gpg2 --quiet --no-greeting --batch --use-agent --armor --detach-sign -
+        }
+
+- SNAZZER\_SIG\_ENABLE
+
+    If set to 0, GPG signing is disabled and snazzer\_sig\_func() is not called.
 
 - SNAZZER\_MEASUREMENTS\_EXCLUDE\_FILE
 
@@ -57,8 +62,9 @@ The output includes:
     default snazzer snapshots
 
 - SNAZZER\_USE\_UTC
-Use UTC times of the form `YYYY-MM-DDTHHMMSSZ` instead of the default local
-time+offset `YYYY-MM-DDTHHMMSS+hhmm`
+
+    Use UTC times of the form `YYYY-MM-DDTHHMMSSZ` instead of the default local
+    time+offset `YYYY-MM-DDTHHMMSS+hhmm`
 
 # EXIT STATUS
 
