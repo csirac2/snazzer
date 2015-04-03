@@ -10,15 +10,18 @@ Getting started
 Examine the documentation, which includes usage information (requires pod2usage,
 a part of perl core):
 
-    snazzer --man
-    snazzer-measure --man
-    snazzer-receive --man
-    snazzer-prune-candidates --man
+    snazzer --man                     # Create, prune and measure snapshots
+    snazzer-receive --man             # Receive remote snapshots over ssh
+    
+Supporting scripts are also documented:
+
+    snazzer-measure --man             # Support script, used by snazzer
+    snazzer-prune-candidates --man    # Support script, used by snazzer[-receive]
     
 Also viewable online at:
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer.md
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-measure.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-receive.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-measure.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-prune-candidates.md
 
 Generate a test btrfs image and mount it:
@@ -46,22 +49,19 @@ re-measuring snapshots which have already been measured by this host
 
 View the snapshot measurement report for one of the snapshots (example only):
 
-    cat /mnt/.snapshotz/.measurements/2015-03-25T100223+1100
+    cat /mnt/.snapshotz/.measurements/2015-04-03T162922+1100
 
 Run one of the commands in the report to see if we can reproduce shasum  (example only):
 
-    cd /mnt/.snapshotz/.measurements
-    OLD=$(pwd); cd '../2015-03-25T100223+1100' && find . -xdev -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions --one-file-system -c --to-stdout --exclude-from '.snapshot_measurements.exclude' | sha512sum -b; cd "$OLD"
+    (cd '../2015-04-03T162922+1100' && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions --one-file-system -c --to-stdout --exclude-from '.snapshot_measurements.exclude' | sha512sum -b)
+    addcec33c540eb18f9b5d462ba09594c11047e0f4eaccd7d58528cc6e6b5ceaf3be12a7ff739b4f3f6074571083feb0e2adc3725e7a4ab4f5706c48cb1f660f0 *-
 
 Run the gpg signature verification command listed in the report  (example only):
 
-    cd /mnt/.snapshotz/.measurements
-    OLD=$(pwd); SIG=$(mktemp) && cat 2015-03-25T100223+1100 | grep -v '/,/' | \
-    sed -n '/> on schwing at 2015-03-25T100233+0000, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' \
-    > $SIG && cd '../2015-03-25T100223+1100' && find . -xdev -print0 | \
-    LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions \
-    --one-file-system -c --to-stdout --exclude-from \
-    '.snapshot_measurements.exclude' | gpg2 --verify $SIG -; cd "$OLD"
+    cd /mnt/.snapshotz/.measurements/
+    (SIG=$(mktemp) && cat '2015-04-03T162922+1100' | grep -v '/,/' | sed -n '/> on schwing at 2015-04-03T162929+1100, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' > $SIG && cd '../2015-04-03T162922+1100' && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | tar --null -T - --no-recursion --preserve-permissions --one-file-system -c --to-stdout --exclude-from '.snapshot_measurements.exclude' | gpg2 --verify $SIG -)
+    gpg: Signature made Fri 03 Apr 2015 04:29:29 PM AEDT using RSA key ID DB9BD91A
+    gpg: Good signature from "testbob (test) <test@bob.com>" [ultimate]
 
 Some observations:
 * Yes, the verification commands are huge and ugly, but eminently reproducible.
