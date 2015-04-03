@@ -4,16 +4,16 @@ snazzer-receive - receive remote snazzer snapshots to current working dir
 
 # SYNOPSIS
 
-    snazzer-receive host [--dry-run] --all [/path/to/btrfs/mountpoint]
+    snazzer-receive [--dry-run] host --all [/path/to/btrfs/mountpoint]
 
-    snazzer-receive host [--dry-run] [/remote/subvol1 [/subvol2 [..]]]
+    snazzer-receive [--dry-run] host [/remote/subvol1 [/subvol2 [..]]]
 
 # DESCRIPTION
 
 First, **snazzer-receive** obtains a list of snapshots on the remote host. This
-is achieved by processing the first positional argument as an ssh hostname with
-which to run `snazzer --list-snapshots [args]` remotely, where \[args\] are all
-subsequent **snazzer-receive** arguments (such as `--all` or
+is achieved by processing the first non-option positional argument as an ssh
+hostname with which to run `snazzer --list-snapshots [args]` remotely, where
+\[args\] are all subsequent **snazzer-receive** arguments (such as `--all` or
 `/remote/subvol1`).
 
 **snazzer-receive** then iterates through this list of snapshots, recreating a
@@ -25,6 +25,23 @@ where possible to reduce transport overhead of incremental snapshots.
 Rather than offer ssh user/port/host specifications through **snazzer-receive**,
 it is assumed all remote hosts are properly configured through your ssh config
 file usually at `$HOME/.ssh/config`.
+
+# OPTIONS
+
+- **--dry-run**: print rather than execute commands that would be run
+- **--help**: Brief help message
+- **--man**: Full documentation
+- **--man-roff**: Full documentation as \*roff output, Eg:
+
+        snazzer --man-roff | nroff -man
+
+- **--man-markdown**: Full documentation as markdown output, Eg:
+
+        snazzer --man-markdown > snazzer-manpage.md
+
+# ENVIRONMENT
+
+# BUGS AND LIMITATIONS
 
 **NOTE 1:** **snazzer-receive** tries to recreate a filesystem similar to that of
 the remote host, starting at the current working directory which represents the
@@ -43,23 +60,6 @@ steps are taken they will all be received into the same local filesystem under
 the current working directory. If this is not what you want, manually mount
 filesystems under the current working directory before running
 **snazzer-receive**.
-
-# OPTIONS
-
-- **--dry-run**: print rather than execute commands that would be run
-- **--help**: Brief help message
-- **--man**: Full documentation
-- **--man-roff**: Full documentation as \*roff output, Eg:
-
-        snazzer --man-roff | nroff -man
-
-- **--man-markdown**: Full documentation as markdown output, Eg:
-
-        snazzer --man-markdown > snazzer-manpage.md
-
-# ENVIRONMENT
-
-# BUGS AND LIMITATIONS
 
 # EXIT STATUS
 

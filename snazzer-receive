@@ -10,11 +10,11 @@ else
     SUDO="sudo"
 fi
 
-list_snapshots_build_cmd() {
+dry_list_snapshots() {
     HOST="$1"
     shift
     cat <<CMD
-    ssh "$HOST" "$SUDO"' snazzer --list-snapshots '"$(
+    ssh "$HOST" "$SUDO snazzer --list-snapshots $(
         while [ -n "$1" ]; do
             echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
             shift
@@ -23,10 +23,12 @@ list_snapshots_build_cmd() {
 CMD
 }
 
-list_snapshots() {
+do_list_snapshots() {
+    # Don't forget to copy the lines below verbatim into dry_list_snapshots()
     HOST="$1"
     shift
-    ssh "$HOST" "$SUDO"' snazzer --list-snapshots '"$(
+    # Don't forget to copy the lines below into dry_list_snapshots() between CMD
+    ssh "$HOST" "$SUDO snazzer --list-snapshots $(
         while [ -n "$1" ]; do
             echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
             shift
@@ -42,7 +44,7 @@ ssh "$HOST" "$SUDO grep -srl '^> on $HOST_ESC at ' \
     '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
 }
 
-build_send_cmd() {
+dry_send() {
     HOST=$1
     SUBVOL_PATH=$2
     SNAP_PATH=$3
@@ -67,7 +69,8 @@ build_send_cmd() {
 CMD
 }
 
-do_send_cmd() {
+do_send() {
+    # Don't forget to copy the lines below verbatim into dry_send()
     HOST=$1
     SUBVOL_PATH=$2
     SNAP_PATH=$3
@@ -78,6 +81,7 @@ do_send_cmd() {
     if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
         PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
+    # Don't forget to copy the lines below into dry_send() between CMD heredoc
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
     ssh "$HOST" "$SUDO btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
@@ -90,7 +94,7 @@ do_send_cmd() {
     $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
 }
 
-build_copy_cmd() {
+dry_copy() {
     HOST=$1
     SUBVOL_REMOTEPATH=$2
     SUBVOL_LOCALPATH=$3
@@ -106,12 +110,14 @@ build_copy_cmd() {
 CMD
 }
 
-do_copy_cmd() {
+do_copy() {
+    # Don't forget to copy the lines below verbatim into dry_copy()
     HOST=$1
     SUBVOL_REMOTEPATH=$2
     SUBVOL_LOCALPATH=$3
     SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$4
+    # Don't forget to copy the lines below verbatim into dry_copy() between CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
     ssh "$HOST" "$SUDO cat \
@@ -126,8 +132,8 @@ create_subvol() {
     if [ "$DIR" != "$PARENT" -a "$PARENT" != "." ]; then
         $SUDO mkdir -vp "$PARENT"
     fi
-$SUDO btrfs subvolume create "$DIR" && \
-$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp "$DIR/.snapshotz"
+    $SUDO btrfs subvolume create "$DIR"
+    $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" -vp "$DIR/.snapshotz"
 }
 
 is_subvol() {
@@ -140,15 +146,15 @@ is_subvol() {
     fi
 }
 
-dispatch_copy_cmd() {
+dispatch_copy() {
     HOST=$1
     SUBVOL_REMOTEPATH=$2
     SUBVOL_LOCALPATH=$3
     SNAP_NAME=$4
     if [ "$DRY_RUN" != "0" ]; then
-        build_copy_cmd "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
+        dry_copy "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
     else
-        do_copy_cmd "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
+        do_copy "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
     fi
 }
 
@@ -179,7 +185,7 @@ HERE
         exit
     fi
     if ! $SUDO test -e "$SUBVOL_RELPATH/.snapshotz/.measurements"; then
-        $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+        $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
             "$SUBVOL_RELPATH/.snapshotz/.measurements"
     fi
     SNAPSHOTS=$($SUDO ls "$SUBVOL_RELPATH/.snapshotz")
@@ -202,7 +208,7 @@ HERE
     NUM_REMOTE=$(echo "$MEAS_REMOTE" | wc -l | cut -d ' ' -f 1)
     while read SNAP_NAME
     do
-        dispatch_copy_cmd "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
+        dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
         NUM_COPY=$(expr $NUM_COPY + 1)
     done < "$MEAS_WANT"
     echo "$MEAS_REMOTE" > "$MEAS_WANT"
@@ -211,7 +217,7 @@ HERE
         if $SUDO test -e  "$SUBVOL_RELPATH/.snapshotz/$SNAP_NAME" && \
             ! $SUDO test -e \
             "$SUBVOL_RELPATH/.snapshotz/.measurements/$SNAP_NAME"; then
-            dispatch_copy_cmd "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
+            dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
             NUM_COPY=$(expr $NUM_COPY + 1)
         fi
     done < "$MEAS_WANT"
@@ -219,23 +225,9 @@ HERE
     echo " $NUM_COPY of $NUM_REMOTE."
 }
 
-dispatch_send_cmd() {
-    HOST=$1
-    SUBVOL_PATH=$2
-    SNAP_PATH=$3
-    PREV_SNAP=$4
-    if [ "$DRY_RUN" != "0" ]; then
-        build_send_cmd \
-            "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
-    else
-        do_send_cmd \
-            "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
-    fi
-}
-
 do_subvolume() {
-    HOST="$1"
-    SUBVOL="$2"
+    HOST=$1
+    SUBVOL=$2
     if [ -z "$SUBVOL" ]; then
         SUBVOL_PATH="."
     else
@@ -256,16 +248,15 @@ HERE
         exit 2
     fi
     if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
-        echo 1
         create_subvol "$SUBVOL_PATH"
     fi
     if ! $SUDO test -e "$SUBVOL_PATH/.snapshotz"; then
-        $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+        $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
             "$SUBVOL_PATH/.snapshotz"
     fi
     # Last snapshot seen in the local target fs
     PREV_SNAP=
-    SNAPSHOTS=$(list_snapshots "$HOST" "/$SUBVOL_PATH")
+    SNAPSHOTS=$(do_list_snapshots "$HOST" "/$SUBVOL_PATH")
     SNAP_WANT=$(mktemp)
     echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
     NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
@@ -286,8 +277,13 @@ HERE
         else
             NUM_RECV=$(expr $NUM_RECV + 1)
             if [ -n "$PREV_SNAP" ]; then PREV_SNAP="/$PREV_SNAP"; fi
-            dispatch_send_cmd \
-                "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
+            if [ "$DRY_RUN" != "0" ]; then
+                dry_send \
+                    "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+            else
+                do_send \
+                    "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+            fi
         fi
         PREV_SNAP="$SNAP_PATH"
     done < "$SNAP_WANT"
@@ -299,12 +295,12 @@ HERE
 #SMELL: Assumes --list-snapshots lines are grouped by subvol, ordered by date
 #FIXME: Subvols containing mixed timezone snapshots will use suboptimal parents
 do_host() {
-    HOST="$1"
+    HOST=$1
     NUM_SUBVOL=0
     LIST_ERR=$(mktemp)
     LIST_OUT=$(mktemp)
     shift
-    list_snapshots "$HOST" "$@" 2>"$LIST_ERR" | \
+    do_list_snapshots "$HOST" "$@" 2>"$LIST_ERR" | \
         sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g' | sort | uniq > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
     # We'd while read FOO ... done < "foo.txt", but can't nest them
@@ -319,7 +315,7 @@ do_host() {
     if [ -s "$LIST_ERR" ]; then
         echo " Additional output from:"
         echo -n "  "
-        list_snapshots_build_cmd "$HOST" "$@"
+        dry_list_snapshots "$HOST" "$@"
         grep . "$LIST_ERR" | sed 's/^/    /g'
     else
         echo ""
@@ -353,13 +349,9 @@ HERE
     shift
 done
 
-if [ -z "$1" -a "$DO_ALL" != "1" ]; then
+if [ -z "$1" ]; then
     pod2usage -exit 0 "$0"
     echo "ERROR: Missing argument" >&2
-    exit 1
-elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
-    pod2usage -exit 0 "$0"
-    echo "ERROR: --force and --dry-run are incompatible" >&2
     exit 1
 fi
 
@@ -374,16 +366,16 @@ snazzer-receive - receive remote snazzer snapshots to current working dir
 
 =head1 SYNOPSIS
 
-  snazzer-receive host [--dry-run] --all [/path/to/btrfs/mountpoint]
+  snazzer-receive [--dry-run] host --all [/path/to/btrfs/mountpoint]
 
-  snazzer-receive host [--dry-run] [/remote/subvol1 [/subvol2 [..]]]
+  snazzer-receive [--dry-run] host [/remote/subvol1 [/subvol2 [..]]]
 
 =head1 DESCRIPTION
 
 First, B<snazzer-receive> obtains a list of snapshots on the remote host. This
-is achieved by processing the first positional argument as an ssh hostname with
-which to run C<snazzer --list-snapshots [args]> remotely, where [args] are all
-subsequent B<snazzer-receive> arguments (such as C<--all> or
+is achieved by processing the first non-option positional argument as an ssh
+hostname with which to run C<snazzer --list-snapshots [args]> remotely, where
+[args] are all subsequent B<snazzer-receive> arguments (such as C<--all> or
 C</remote/subvol1>).
 
 B<snazzer-receive> then iterates through this list of snapshots, recreating a
@@ -395,24 +387,6 @@ where possible to reduce transport overhead of incremental snapshots.
 Rather than offer ssh user/port/host specifications through B<snazzer-receive>,
 it is assumed all remote hosts are properly configured through your ssh config
 file usually at C<$HOME/.ssh/config>.
-
-B<NOTE 1:> B<snazzer-receive> tries to recreate a filesystem similar to that of
-the remote host, starting at the current working directory which represents the
-root filesystem. If the remote host has a root btrfs filesystem, this means that
-the current working directory should itself also be a btrfs subvolume in order
-to receive snapshots under ./.snapshotz. However, B<snazzer-receive> will be
-unable to replace the current working directory with a btrfs subvolume if it
-isn't already one.
-
-Therefore, if required, ensure the current working directory is already a btrfs
-subvolume prior to running B<snazzer-receive> if you need to receive btrfs root.
-
-B<NOTE 2:> C<snazzer-receive host --all> may process a list of snapshots
-spanning multiple separate btrfs filesystems on a remote host, but unless extra
-steps are taken they will all be received into the same local filesystem under
-the current working directory. If this is not what you want, manually mount
-filesystems under the current working directory before running
-B<snazzer-receive>.
 
 =head1 OPTIONS
 
@@ -437,6 +411,24 @@ B<snazzer-receive>.
 =head1 ENVIRONMENT
 
 =head1 BUGS AND LIMITATIONS
+
+B<NOTE 1:> B<snazzer-receive> tries to recreate a filesystem similar to that of
+the remote host, starting at the current working directory which represents the
+root filesystem. If the remote host has a root btrfs filesystem, this means that
+the current working directory should itself also be a btrfs subvolume in order
+to receive snapshots under ./.snapshotz. However, B<snazzer-receive> will be
+unable to replace the current working directory with a btrfs subvolume if it
+isn't already one.
+
+Therefore, if required, ensure the current working directory is already a btrfs
+subvolume prior to running B<snazzer-receive> if you need to receive btrfs root.
+
+B<NOTE 2:> C<snazzer-receive host --all> may process a list of snapshots
+spanning multiple separate btrfs filesystems on a remote host, but unless extra
+steps are taken they will all be received into the same local filesystem under
+the current working directory. If this is not what you want, manually mount
+filesystems under the current working directory before running
+B<snazzer-receive>.
 
 =head1 EXIT STATUS
 
