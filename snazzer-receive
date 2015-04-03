@@ -12,95 +12,143 @@ fi
 
 list_snapshots_build_cmd() {
     HOST="$1"
-    ARGS=
     shift
-    for I in 1 2 3 4 5 6 7 8 9; do
-        if [ -n "$1" ]; then
-            ARGS=$(echo -n "$ARGS "; echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "'" )
+    cat <<CMD
+    ssh "$HOST" "$SUDO"' snazzer --list-snapshots '"$(
+        while [ -n "$1" ]; do
+            echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
             shift
-        fi
-    done
-    cat <<HERE
-ssh "$HOST" '$SUDO snazzer --list-snapshots $(echo "$ARGS" | sed "s|'|'\\\\''|g")'
-HERE
+        done
+    )"
+CMD
 }
 
 list_snapshots() {
-    list_snapshots_build_cmd "$@" | /bin/sh -e
+    HOST="$1"
+    shift
+    ssh "$HOST" "$SUDO"' snazzer --list-snapshots '"$(
+        while [ -n "$1" ]; do
+            echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
+            shift
+        done
+    )"
 }
 
 list_remote_snapshot_measurements() {
     HOST="$1"
-    SUBVOL_ESC_ESC=$(echo "$2" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g";)
-    cat <<HERE | /bin/sh -e | sed "s|^.*/||g"
-ssh "$HOST" '$SUDO grep -srl '\''^> on $HOST at '\'' \
-    '\''$SUBVOL_ESC_ESC/.snapshotz/.measurements/'\'''
-HERE
+    HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
+    SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
+ssh "$HOST" "$SUDO grep -srl '^> on $HOST_ESC at ' \
+    '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
 }
 
 build_send_cmd() {
-    HOST="$1"
-    SUBVOL_PATH_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-    # executed remotely after one round of interpolation, so escape twice:
-    SNAP_PATH=$(echo "$3")
-    SNAP_PATH_ESC_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH_ESC_ESC=$(echo "$4" | sed "s|'|'\\\\''|g" | sed "s|'|'\\\\''|g" )
+    HOST=$1
+    SUBVOL_PATH=$2
+    SNAP_PATH=$3
+    SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH_ESC=$(echo "$4" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$(basename "$SNAP_PATH")
     PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH_ESC_ESC" ]; then
-        PARENT_SWITCH="-p '\\''$SNAP_PARENT_PATH_ESC_ESC'\\''" 
+    if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
+        PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
-    cat <<HERE
-$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
-    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
-ssh '$HOST' '$SUDO btrfs send '\''$SNAP_PATH_ESC_ESC'\'' $PARENT_SWITCH' \
-    2>/dev/null | $SUDO btrfs receive '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
-$SUDO btrfs subvolume snapshot -r \
-    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete/$SNAP_NAME' \
-    '$SUBVOL_PATH_ESC/.snapshotz/' >/dev/null
-$SUDO btrfs subvolume delete \
-    '$SUBVOL_PATH_ESC/.snapshotz/.incomplete/$SNAP_NAME' >/dev/null
-$SUDO rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
-HERE
+    cat <<CMD
+    $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
+        "$SUBVOL_PATH/.snapshotz/.incomplete"
+    ssh "$HOST" "$SUDO btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
+        2>/dev/null | $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    $SUDO btrfs subvolume snapshot -r \
+        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
+        "$SUBVOL_PATH/.snapshotz/" >/dev/null
+    $SUDO btrfs subvolume delete \
+        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
+    $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
+CMD
+}
+
+do_send_cmd() {
+    HOST=$1
+    SUBVOL_PATH=$2
+    SNAP_PATH=$3
+    SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH_ESC=$(echo "$4" | sed "s|'|'\\\\''|g")
+    SNAP_NAME=$(basename "$SNAP_PATH")
+    PARENT_SWITCH=""
+    if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
+        PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
+    fi
+    $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
+        "$SUBVOL_PATH/.snapshotz/.incomplete"
+    ssh "$HOST" "$SUDO btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
+        2>/dev/null | $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    $SUDO btrfs subvolume snapshot -r \
+        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
+        "$SUBVOL_PATH/.snapshotz/" >/dev/null
+    $SUDO btrfs subvolume delete \
+        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
+    $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
 }
 
 build_copy_cmd() {
-    HOST="$1"
-    SUBVOL_PATH_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-    SUBVOL_PATH_ESC_ESC=$(echo "$SUBVOL_PATH_ESC" | sed "s|'|'\\\\''|g")
-    SNAP_NAME="$3"
-    cat <<HERE
-$SUDO mkdir -vp --mode=$SNAZZER_SNAPSHOTZ_PERMS \
-    '$SUBVOL_PATH_ESC/.snapshotz/.measurements'
-ssh '$HOST' '$SUDO cat \
-    '\''/$SUBVOL_PATH_ESC_ESC/.snapshotz/.measurements/$SNAP_NAME'\''' | \
-    $SUDO tee -a '$SUBVOL_PATH_ESC/.snapshotz/.measurements/$SNAP_NAME' \
-    >/dev/null
-HERE
+    HOST=$1
+    SUBVOL_REMOTEPATH=$2
+    SUBVOL_LOCALPATH=$3
+    SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
+    SNAP_NAME=$4
+    cat <<CMD
+    $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
+        "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
+    ssh "$HOST" "$SUDO cat \
+        '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'" | \
+        $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
+        >/dev/null
+CMD
+}
+
+do_copy_cmd() {
+    HOST=$1
+    SUBVOL_REMOTEPATH=$2
+    SUBVOL_LOCALPATH=$3
+    SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
+    SNAP_NAME=$4
+    $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
+        "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
+    ssh "$HOST" "$SUDO cat \
+        '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'" | \
+        $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
+        >/dev/null
 }
 
 create_subvol() {
     DIR="$1"
-    DIR_ESC=$(echo "$DIR" | sed "s|'|'\\\\''|g")
     PARENT=$(dirname "$DIR")
-    PARENT_ESC=$(echo "$PARENT" | sed "s|'|'\\\\''|g")
     if [ "$DIR" != "$PARENT" -a "$PARENT" != "." ]; then
-        eval "$SUDO mkdir -vp '$PARENT_ESC'"
+        $SUDO mkdir -vp "$PARENT"
     fi
-    cat <<HERE | /bin/sh -e
-$SUDO btrfs subvolume create '$DIR_ESC' && \
-$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp '$DIR_ESC/.snapshotz'
-HERE
+$SUDO btrfs subvolume create "$DIR" && \
+$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS -vp "$DIR/.snapshotz"
 }
 
 is_subvol() {
-    DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
+    DIR=$1
 
-    if [ "$(eval "$SUDO btrfs subvolume show '$DIR_ESC' 2>&1 || echo ERROR" | \
-        grep -c '^ERROR' || true)" = "0" ]; then
+    if $SUDO btrfs subvolume show "$DIR" >/dev/null 2>&1; then
         echo 1
     else
         echo 0
+    fi
+}
+
+dispatch_copy_cmd() {
+    HOST=$1
+    SUBVOL_REMOTEPATH=$2
+    SUBVOL_LOCALPATH=$3
+    SNAP_NAME=$4
+    if [ "$DRY_RUN" != "0" ]; then
+        build_copy_cmd "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
+    else
+        do_copy_cmd "$HOST" "$SUBVOL_REMOTEPATH" "$SUBVOL_LOCALPATH" "$SNAP_NAME"
     fi
 }
 
@@ -108,37 +156,37 @@ do_subvolume_measurements() {
     HOST="$1"
     SUBVOL="$2"
     if [ -z "$SUBVOL" ]; then
-        SUBVOL_PATH="."
+        SUBVOL_RELPATH="."
     else
-        SUBVOL_PATH="$SUBVOL"
+        SUBVOL_RELPATH="$SUBVOL"
     fi
-    SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
+    SUBVOL_RELPATH_ESC=$(echo "$SUBVOL_RELPATH" | sed "s|'|'\\\\''|g") 
     echo -n "  appending measurements..."
-    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'"; then
+    if $SUDO test -e "$SUBVOL_RELPATH/.snapshotz/.incomplete"; then
         cat <<HERE >&2
 
-ERROR: '$SUBVOL_PATH_ESC/.snapshotz/.incomplete' exists. Another instance is already
+ERROR: $SUBVOL_RELPATH/.snapshotz/.incomplete exists. Another instance is already
 running, or a previous invocation was interrupted. If you are sure no other
 instances are already running, remove this directory and snapshots under it:
 
-btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'/*
-rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
+btrfs subvolume delete '$SUBVOL_RELPATH_ESC/.snapshotz/.incomplete'/*
+rmdir '$SUBVOL_RELPATH_ESC/.snapshotz/.incomplete'
 HERE
         exit 2
     fi
-    if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
-        echo "ERROR: $SUBVOL_PATH not a subvolume, this shouldn't happen."
+    if [ "$(is_subvol "$SUBVOL_RELPATH")" != "1" ]; then
+        echo "ERROR: $SUBVOL_RELPATH not a subvolume, this shouldn't happen."
         exit
     fi
-    if ! eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.measurements'"; then
-        eval "$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
-            '$SUBVOL_PATH_ESC/.snapshotz/.measurements'"
+    if ! $SUDO test -e "$SUBVOL_RELPATH/.snapshotz/.measurements"; then
+        $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+            "$SUBVOL_RELPATH/.snapshotz/.measurements"
     fi
-    SNAPSHOTS=$($SUDO ls "$SUBVOL_PATH/.snapshotz")
+    SNAPSHOTS=$($SUDO ls "$SUBVOL_RELPATH/.snapshotz")
     MEAS_WANT=$(mktemp)
-    MEAS_ABSENT=$(eval "$SUDO grep -srL '^> on $HOST at ' \
-        '$SUBVOL_PATH_ESC/.snapshotz/.measurements/'" | sed "s|^.*/||g")
-    MEAS_REMOTE=$(list_remote_snapshot_measurements "$HOST" "/$SUBVOL_PATH")
+    MEAS_ABSENT=$($SUDO grep -srL "^> on $HOST at " \
+        "$SUBVOL_RELPATH/.snapshotz/.measurements/" | sed "s|^.*/||g")
+    MEAS_REMOTE=$(list_remote_snapshot_measurements "$HOST" "/$SUBVOL_RELPATH")
     # 1. Print snapshot measurements that we have locally but are missing
     #    mentions of remote $HOST;
     # 2. Print snapshot measurements available on the remote $HOST
@@ -152,28 +200,37 @@ HERE
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
     NUM_COPY=0
     NUM_REMOTE=$(echo "$MEAS_REMOTE" | wc -l | cut -d ' ' -f 1)
-    if [ "$DRY_RUN" != "0" ]; then
-        CMD="cat"
-    else
-        CMD="/bin/sh -e"
-    fi
     while read SNAP_NAME
     do
-        build_copy_cmd "$HOST" "$SUBVOL_PATH" "$SNAP_NAME" | $CMD
+        dispatch_copy_cmd "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
         NUM_COPY=$(expr $NUM_COPY + 1)
     done < "$MEAS_WANT"
     echo "$MEAS_REMOTE" > "$MEAS_WANT"
     while read SNAP_NAME
     do
-        if eval "$SUDO test -e  '$SUBVOL_PATH_ESC/.snapshotz/$SNAP_NAME'" && \
-            ! eval "$SUDO test -e \
-            '$SUBVOL_PATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"; then
-            build_copy_cmd "$HOST" "$SUBVOL_PATH" "$SNAP_NAME" | $CMD
+        if $SUDO test -e  "$SUBVOL_RELPATH/.snapshotz/$SNAP_NAME" && \
+            ! $SUDO test -e \
+            "$SUBVOL_RELPATH/.snapshotz/.measurements/$SNAP_NAME"; then
+            dispatch_copy_cmd "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
             NUM_COPY=$(expr $NUM_COPY + 1)
         fi
     done < "$MEAS_WANT"
     rm "$MEAS_WANT"
     echo " $NUM_COPY of $NUM_REMOTE."
+}
+
+dispatch_send_cmd() {
+    HOST=$1
+    SUBVOL_PATH=$2
+    SNAP_PATH=$3
+    PREV_SNAP=$4
+    if [ "$DRY_RUN" != "0" ]; then
+        build_send_cmd \
+            "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+    else
+        do_send_cmd \
+            "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+    fi
 }
 
 do_subvolume() {
@@ -185,11 +242,11 @@ do_subvolume() {
         SUBVOL_PATH="$SUBVOL"
     fi
     SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
-    echo "subvolume '$SUBVOL_PATH_ESC':"
-    if eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'"; then
+    echo "subvolume $SUBVOL_PATH:"
+    if $SUDO test -e "$SUBVOL_PATH/.snapshotz/.incomplete"; then
         cat <<HERE >&2
 
-ERROR: '$SUBVOL_PATH_ESC/.snapshotz/.incomplete' exists. Another instance is already
+ERROR: $SUBVOL_PATH/.snapshotz/.incomplete exists. Another instance is already
 running, or a previous invocation was interrupted. If you are sure no other
 instances are already running, remove this directory and snapshots under it:
 
@@ -199,15 +256,16 @@ HERE
         exit 2
     fi
     if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
+        echo 1
         create_subvol "$SUBVOL_PATH"
     fi
-    if ! eval "$SUDO test -e '$SUBVOL_PATH_ESC/.snapshotz'"; then
-        eval "$SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
-            '$SUBVOL_PATH_ESC/.snapshotz'"
+    if ! $SUDO test -e "$SUBVOL_PATH/.snapshotz"; then
+        $SUDO mkdir --mode=$SNAZZER_SNAPSHOTZ_PERMS \
+            "$SUBVOL_PATH/.snapshotz"
     fi
     # Last snapshot seen in the local target fs
     PREV_SNAP=
-    SNAPSHOTS=$(eval "list_snapshots '$HOST' '/$SUBVOL_PATH_ESC'")
+    SNAPSHOTS=$(list_snapshots "$HOST" "/$SUBVOL_PATH")
     SNAP_WANT=$(mktemp)
     echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
     NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
@@ -220,24 +278,16 @@ HERE
     do
         SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
         SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
-        SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
         if [ -z "$SUBVOL_PATH" ]; then
             SUBVOL_PATH="."
         fi
-        if eval "$SUDO test -e '$SNAP_PATH_ESC'"; then
+        if $SUDO test -e "$SNAP_PATH"; then
             NUM_SKIP=$(expr $NUM_SKIP + 1)
         else
             NUM_RECV=$(expr $NUM_RECV + 1)
-            CMD="/bin/sh -e"
-            if [ "$DRY_RUN" != "0" ]; then
-                CMD="cat"
-            fi
-            if [ -z "$PREV_SNAP" ]; then
-                build_send_cmd "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" | $CMD
-            else
-                build_send_cmd \
-                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "/$PREV_SNAP" | $CMD
-            fi
+            if [ -n "$PREV_SNAP" ]; then PREV_SNAP="/$PREV_SNAP"; fi
+            dispatch_send_cmd \
+                "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
         fi
         PREV_SNAP="$SNAP_PATH"
     done < "$SNAP_WANT"
@@ -254,10 +304,10 @@ do_host() {
     LIST_ERR=$(mktemp)
     LIST_OUT=$(mktemp)
     shift
-    eval "list_snapshots '$HOST' $@ 2>'$LIST_ERR' | \
-        sed 's|^/*\\(.*\\)/\\.snapshotz/.*|\\1|g' | sort | uniq" > "$LIST_OUT"
+    list_snapshots "$HOST" "$@" 2>"$LIST_ERR" | \
+        sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g' | sort | uniq > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
-    # I'd use another foo | while read FOO loop, but you can't nest them in dash
+    # We'd while read FOO ... done < "foo.txt", but can't nest them
     I=0
     while test "$I" -lt "$NUM_SUBVOL"; do
         I=$(expr $I + 1)
@@ -269,7 +319,7 @@ do_host() {
     if [ -s "$LIST_ERR" ]; then
         echo " Additional output from:"
         echo -n "  "
-        eval "list_snapshots_build_cmd '$HOST' $@"
+        list_snapshots_build_cmd "$HOST" "$@"
         grep . "$LIST_ERR" | sed 's/^/    /g'
     else
         echo ""
