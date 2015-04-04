@@ -112,7 +112,7 @@ report_subvols_excluded() {
 # SMELL: what if a subvol is mounted some place other than its path name?
 list_btrfs_mountpoints() {
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
-    df -t btrfs | tail -n+2 | awk '{ print $1 }' | sort |uniq | \
+    df -t btrfs 2>/dev/null | tail -n+2 | awk '{ print $1 }' | sort | uniq | \
         while read DEV; do df --output=target "$DEV" | tail -n+2 ; done | \
         grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE"
     rm "$EXCL_FILE"
