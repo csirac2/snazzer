@@ -34,9 +34,10 @@ var/lib/docker
 *secret*
 HERE
     cat <<HERE >&2
-WARN: '$MISSING_SUBVOLS_EXCL_FILE' missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
+WARN: $MISSING_SUBVOLS_EXCL_FILE missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
+    echo -n "    "
+    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | sed ':a;N;$!ba;s/\n/, /g' >&2
 fi
 
 # So, mountpoint(1) returns true if the path is a btrfs subvolume root, but we
