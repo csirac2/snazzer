@@ -71,7 +71,7 @@ glob2grep_file() {
     FILE=$1
     OUT=$(mktemp)
 
-    $SUDO cat "$FILE" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
+    cat "$FILE" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
 
     echo "$OUT"
 }
@@ -321,7 +321,7 @@ measure_lock() {
         echo "  Please report this to the author and/or remove the dir" >&2
         exit 7
     else
-        OLD_PID=$($SUDO cat "$SNAZZER_MEAS_LOCK_DIR/pid")
+        OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
         if ps --pid=$OLD_PID >/dev/null; then
             echo "ERROR: A snazzer --measure invocation is already running" >&2
             echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
