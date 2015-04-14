@@ -36,7 +36,7 @@ HERE
     cat <<HERE >&2
 WARN: $MISSING_SUBVOLS_EXCL_FILE missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    echo -n "    "
+    echo -n "    " >&2
     cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | sed ':a;N;$!ba;s/\n/, /g' >&2
 fi
 
@@ -101,7 +101,7 @@ report_subvols_excluded() {
     NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
 
     if [ "$NUM" != "0" ]; then
-        echo "$NUM subvolumes excluded in $DIR by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
+        echo "$NUM subvolumes excluded in $DIR by $SNAZZER_SUBVOLS_EXCLUDE_FILE." >&2
     fi
 }
 
