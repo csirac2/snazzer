@@ -82,9 +82,9 @@ build_find_excl_switch() {
     DIR=$1
     EXCL_FILE="$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 
-    cat "$EXCL_FILE" | sed "s/'/'\\\\''/g" | while read RULE
+    sed "s/'/'\\\\''/g" "$EXCL_FILE" | while read RULE
     do
-        echo -n " -path '*$RULE' -prune -o"
+        printf " -path '*$RULE' -prune -o"
     done
 }
 
