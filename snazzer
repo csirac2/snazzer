@@ -36,8 +36,8 @@ HERE
     cat <<HERE >&2
 WARN: $MISSING_SUBVOLS_EXCL_FILE missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
-    echo -n "    " >&2
-    cat "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | sed ':a;N;$!ba;s/\n/, /g' >&2
+    printf "    " >&2
+    sed ':a;N;$!ba;s/\n/, /g' "$SNAZZER_SUBVOLS_EXCLUDE_FILE" >&2
 fi
 
 # So, mountpoint(1) returns true if the path is a btrfs subvolume root, but we
@@ -71,7 +71,7 @@ glob2grep_file() {
     FILE=$1
     OUT=$(mktemp)
 
-    cat "$FILE" | sed 's|[$.^]|\\&|g' | sed 's/\*/\.*/g' > "$OUT"
+    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' > "$OUT"
 
     echo "$OUT"
 }
@@ -294,8 +294,8 @@ prune() {
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
-    NUM_PRUNE=$(echo "$PRUNE_LIST" | grep . | wc -l)
-    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep . | wc -l)
+    NUM_PRUNE=$(echo "$PRUNE_LIST" | grep -c . )
+    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep -c . )
     echo "$SUBVOL_SHOTZ: pruning $NUM_PRUNE of $NUM_AVAIL"
     if [ "$DRY_RUN" != "1" -a "$DO_FORCE" != "1" ]; then
         echo "ERROR: --prune expected --force or --dry-run" >&2
@@ -322,7 +322,7 @@ measure_lock() {
         exit 7
     else
         OLD_PID=$(cat "$SNAZZER_MEAS_LOCK_DIR/pid")
-        if ps --pid=$OLD_PID >/dev/null; then
+        if ps --pid="$OLD_PID" >/dev/null; then
             echo "ERROR: A snazzer --measure invocation is already running" >&2
             echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
             exit 7
@@ -394,8 +394,8 @@ measure() {
         SNAP_LIST=$(echo "$SNAP_LIST"; echo "$SNAP_MISSING")
     fi
     # grep . so we don't count final newline
-    NUM_MEAS=$( echo "$SNAP_LIST" | grep . | wc -l )
-    NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep . | wc -l)
+    NUM_MEAS=$( echo "$SNAP_LIST" | grep -c . )
+    NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep -c . )
     echo "$SUBVOL: measuring $NUM_MEAS of $NUM_AVAIL"
     if [ -n "$SNAP_LIST" ]; then
         if [ "$DRY_RUN" = "1" ]; then
