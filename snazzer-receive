@@ -14,7 +14,7 @@ dry_list_snapshots() {
     HOST="$1"
     shift
     cat <<CMD
-    ssh "$HOST" "$SUDO snazzer --list-snapshots $(
+    ssh "$HOST" "snazzer --list-snapshots $(
         while [ -n "$1" ]; do
             echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
             shift
@@ -23,12 +23,54 @@ dry_list_snapshots() {
 CMD
 }
 
+check_ssh_err() {
+    HOST=$1
+    CMD=$2
+    STDERR=$3
+    RC=$4
+
+    if [ -s "$STDERR" ] && grep '^sudo:' "$STDERR"; then
+        cat <<HERE >&2
+
+ERROR running:
+  ssh "$HOST" "$CMD"
+  $(cat "$STDERR")
+
+  Is the sudo invocation above permitted to run passwordless on this host? Check
+  sudoers config against the snazzer documentation (hint: snazzer-receive --man)
+HERE
+        exit 12
+    elif [ "$RC" = "0" ]; then
+        cat "$STDERR" >&2
+    else
+        cat <<HERE >&2
+
+ERROR running:
+  ssh "$HOST" "$CMD"
+  $(cat "$STDERR")
+HERE
+        exit "$RC"
+    fi
+}
+
+sudo_ssh() {
+    HOST="$1"
+    CMD="sudo -n $2"
+    STDERR=$(mktemp)
+    RC=0
+
+    ssh "$HOST" "$CMD" 2>"$STDERR" || RC=$?
+    check_ssh_err "$HOST" "$CMD" "$STDERR" "$RC"
+
+    rm "$STDERR"
+}
+
 do_list_snapshots() {
     # Don't forget to copy the lines below verbatim into dry_list_snapshots()
     HOST="$1"
     shift
     # Don't forget to copy the lines below into dry_list_snapshots() between CMD
-    ssh "$HOST" "$SUDO snazzer --list-snapshots $(
+    sudo_ssh "$HOST" "snazzer --list-snapshots $(
         while [ -n "$1" ]; do
             echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
             shift
@@ -40,7 +82,7 @@ list_remote_snapshot_measurements() {
     HOST="$1"
     HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-ssh "$HOST" "$SUDO grep -srl '^> on $HOST_ESC at ' \
+    sudo_ssh "$HOST" "grep -srl '^> on $HOST_ESC at ' \
     '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
 }
 
@@ -58,7 +100,7 @@ dry_send() {
     cat <<CMD
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    ssh "$HOST" "$SUDO btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
+    ssh "$HOST" "btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
         2>/dev/null | $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
@@ -82,16 +124,21 @@ do_send() {
         PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
+    SEND_ERR=$(mktemp)
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    ssh "$HOST" "$SUDO btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
-        2>/dev/null | $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
+    # Can't use sudo_ssh here because we must stream ssh output to btrfs receive
+    (ssh "$HOST" "$CMD" 2>"$SEND_ERR" || \
+        check_ssh_err "$HOST" "$CMD" "$SEND_ERR" "$?") | \
+        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
         "$SUBVOL_PATH/.snapshotz/" >/dev/null
     $SUDO btrfs subvolume delete \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
     $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
+    rm "$SEND_ERR"
 }
 
 dry_copy() {
@@ -103,7 +150,7 @@ dry_copy() {
     cat <<CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
-    ssh "$HOST" "$SUDO cat \
+    ssh "$HOST" "cat \
         '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'" | \
         $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
         >/dev/null
@@ -120,10 +167,13 @@ do_copy() {
     # Don't forget to copy the lines below verbatim into dry_copy() between CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
-    ssh "$HOST" "$SUDO cat \
-        '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'" | \
-        $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
-        >/dev/null
+    CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
+    MEAS_TMP=$(mktemp)
+    sudo_ssh "$HOST" "$CMD" >"$MEAS_TMP"
+    # We're using tee here to avoid giving sudo for cp
+    cat "$MEAS_TMP" | $SUDO tee -a \
+        "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
+    rm "$MEAS_TMP"
 }
 
 create_subvol() {
@@ -279,10 +329,10 @@ HERE
             if [ -n "$PREV_SNAP" ]; then PREV_SNAP="/$PREV_SNAP"; fi
             if [ "$DRY_RUN" != "0" ]; then
                 dry_send \
-                    "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
             else
                 do_send \
-                    "$HOST" "$SUBVOL_PATH" "$SNAP_PATH" "$PREV_SNAP"
+                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
             fi
         fi
         PREV_SNAP="$SNAP_PATH"
@@ -300,7 +350,11 @@ do_host() {
     LIST_ERR=$(mktemp)
     LIST_OUT=$(mktemp)
     shift
-    do_list_snapshots "$HOST" "$@" 2>"$LIST_ERR" | \
+    # This is messy because we want to capture stderr but at the same time still
+    # emit it should do_list_snapshots actually exit with a non-zero return code
+    LIST=$( (do_list_snapshots "$HOST" "$@" 2>"$LIST_ERR") || \
+        (RC=$$; cat "$LIST_ERR" >&2; exit "$RC" ) )
+    echo "$LIST" | \
         sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g' | sort | uniq > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
     # We'd while read FOO ... done < "foo.txt", but can't nest them
@@ -442,6 +496,8 @@ non-zero exit status under the following conditions:
 =item 2. C<.snapshotz/.incomplete> already exists at a given destination subvolume
 
 =item 9. tried to display man page with a formatter which is not installed
+
+=item 12. remote ssh sudo command failed
 
 =back
 
