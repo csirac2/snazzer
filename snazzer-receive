@@ -47,9 +47,9 @@ HERE
     fi
 }
 
-sudo_ssh() {
-    HOST="$1"
-    CMD="sudo -n $2"
+do_ssh() {
+    HOST=$1
+    CMD=$2
     STDERR=$(mktemp)
     RC=0
 
@@ -71,14 +71,14 @@ do_list_snapshots() {
     HOST="$1"
     shift
     # Don't forget to copy the lines below into dry_list_snapshots() between CMD
-    sudo_ssh "$HOST" "snazzer --list-snapshots $(squote_args "$@")"
+    do_ssh "$HOST" "sudo -n snazzer --list-snapshots $(squote_args "$@")"
 }
 
 list_remote_snapshot_measurements() {
     HOST="$1"
     HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-    sudo_ssh "$HOST" "grep -srl '^> on $HOST_ESC at ' \
+    do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
     '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
 }
 
@@ -97,8 +97,8 @@ dry_send() {
     cat <<CMD
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
-    ssh "$HOST" "\$CMD" | \
+    CMD="btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
+    ssh "$HOST" "sudo -n \$CMD" | \
         $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
@@ -121,7 +121,7 @@ do_send() {
     if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
         PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
-    # Can't use sudo_ssh below, we must stream ssh output to btrfs receive
+    # Can't use do_ssh below, we must stream ssh output to btrfs receive
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
     SEND_ERR=$(mktemp)
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
@@ -171,7 +171,7 @@ do_copy() {
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
     CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
     MEAS_TMP=$(mktemp)
-    sudo_ssh "$HOST" "$CMD" >"$MEAS_TMP"
+    do_ssh "$HOST" "sudo -n $CMD" >"$MEAS_TMP"
     cat "$MEAS_TMP" | $SUDO tee -a \
         "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
     rm "$MEAS_TMP"
