@@ -10,17 +10,11 @@ else
     SUDO="sudo"
 fi
 
-dry_list_snapshots() {
-    HOST="$1"
-    shift
-    cat <<CMD
-    ssh "$HOST" "snazzer --list-snapshots $(
-        while [ -n "$1" ]; do
-            echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
-            shift
-        done
-    )"
-CMD
+squote_args() {
+    while [ -n "$1" ]; do
+        echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
+        shift
+    done
 }
 
 check_ssh_err() {
@@ -65,17 +59,19 @@ sudo_ssh() {
     rm "$STDERR"
 }
 
+dry_list_snapshots() {
+    HOST="$1"
+    shift
+    cat <<CMD
+    ssh "$HOST" "sudo -n snazzer --list-snapshots $(squote_args "$@")"
+CMD
+}
+
 do_list_snapshots() {
-    # Don't forget to copy the lines below verbatim into dry_list_snapshots()
     HOST="$1"
     shift
     # Don't forget to copy the lines below into dry_list_snapshots() between CMD
-    sudo_ssh "$HOST" "snazzer --list-snapshots $(
-        while [ -n "$1" ]; do
-            echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
-            shift
-        done
-    )"
+    sudo_ssh "$HOST" "snazzer --list-snapshots $(squote_args "$@")"
 }
 
 list_remote_snapshot_measurements() {
@@ -97,11 +93,13 @@ dry_send() {
     if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
         PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
+    # Don't forget to escape \$(mktemp), \$CMD and delete usage of \$SEND_ERR!
     cat <<CMD
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    ssh "$HOST" "btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH" \
-        2>/dev/null | $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
+    ssh "$HOST" "\$CMD" | \
+        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
         "$SUBVOL_PATH/.snapshotz/" >/dev/null
@@ -123,12 +121,12 @@ do_send() {
     if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
         PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
+    # Can't use sudo_ssh below, we must stream ssh output to btrfs receive
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
     SEND_ERR=$(mktemp)
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
     CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
-    # Can't use sudo_ssh here because we must stream ssh output to btrfs receive
     (ssh "$HOST" "$CMD" 2>"$SEND_ERR" || \
         check_ssh_err "$HOST" "$CMD" "$SEND_ERR" "$?") | \
         $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
@@ -147,13 +145,16 @@ dry_copy() {
     SUBVOL_LOCALPATH=$3
     SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$4
+    # Don't forget to escape \$(mktemp), \$MEAS_TMP, \$CMD!
     cat <<CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
-    ssh "$HOST" "cat \
-        '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'" | \
-        $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
-        >/dev/null
+    CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
+    MEAS_TMP=\$(mktemp)
+    ssh "$HOST" "sudo -n \$CMD" >"\$MEAS_TMP"
+    cat "\$MEAS_TMP" | $SUDO tee -a \
+        "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
+    rm "\$MEAS_TMP"
 CMD
 }
 
@@ -164,13 +165,13 @@ do_copy() {
     SUBVOL_LOCALPATH=$3
     SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$4
+    # We're using tee below to avoid giving sudo for cp
     # Don't forget to copy the lines below verbatim into dry_copy() between CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
     CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
     MEAS_TMP=$(mktemp)
     sudo_ssh "$HOST" "$CMD" >"$MEAS_TMP"
-    # We're using tee here to avoid giving sudo for cp
     cat "$MEAS_TMP" | $SUDO tee -a \
         "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
     rm "$MEAS_TMP"
