@@ -79,7 +79,7 @@ list_remote_snapshot_measurements() {
     HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
     do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
-    '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
+        '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
 }
 
 dry_send() {
@@ -358,7 +358,7 @@ do_host() {
     echo "$LIST" | \
         sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g' | sort | uniq > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
-    # We'd while read FOO ... done < "foo.txt", but can't nest them
+    # SMELL: We'd while read FOO ... done < "foo.txt", but can't nest them
     I=0
     while test "$I" -lt "$NUM_SUBVOL"; do
         I=$(expr $I + 1)
