@@ -41,6 +41,114 @@ file usually at `$HOME/.ssh/config`.
 
 # ENVIRONMENT
 
+## sudo requirements for remote hosts
+
+**snazzer-receive** assumes its ssh user on the remote host has passwordless sudo
+for the commands it needs to run. Only a few commands are necessary, the
+following lines in `/etc/sudoers` or `/etc/sudoers.d/snazzer` should suffice
+(replace "sshuser" with the actual **snazzer-receive** ssh username):
+
+    sshuser ALL=(root:nobody) NOPASSWD: \
+        /usr/bin/snazzer --list-snapshots *, \
+        /bin/grep -srl */.snapshotz/.measurements/, \
+        /sbin/btrfs send */.snapshotz/*, \
+        /bin/cat */.snapshotz/.measurements/*
+
+## sudo/cron user requirements for hosts running **snazzer-receive**
+
+Running ssh as the root user is generally considered a bad idea, so when setting
+up a cron job to run **snazzer-receive** it should be run as a normal user
+dedicated to this task only - in which case the following lines in
+`/etc/sudoers` or `/etc/sudoers.d/snazzer` should suffice (replace
+"snazzeruser" with the actual username your cron job will use):
+
+    snazzeruser ALL=(root:nobody) NOPASSWD: \
+      /usr/bin/test -e */.snapshotz*, \
+      /sbin/btrfs subvolume show *, \
+      /bin/ls */.snapshotz, \
+      /bin/grep -srL */.snapshotz/.measurements/, \
+      /bin/mkdir --mode=0755 */.snapshotz/.incomplete, \
+      /sbin/btrfs receive */.snapshotz/.incomplete, \
+      /sbin/btrfs subvolume snapshot -r */.snapshotz/.incomplete/* */.snapshotz/,\
+      /sbin/btrfs subvolume delete */.snapshotz/.incomplete/*, \
+      /bin/rmdir */.snapshotz/.incomplete, \
+      /bin/mkdir -vp --mode=0755 */.snapshotz/.measurements, \
+      /usr/bin/tee -a */.snapshotz/.measurements/*
+
+# SECURITY CONSIDERATIONS
+
+## Remote hosts
+
+**snazzer-receive** relies on running ssh remote commands. It is agnostic about
+the auth method used, but this documentation assumes key-based.
+
+Combined with passwordless sudo, remote hosts are vulnerable to and must have
+absolute trust in the ssh key-holder, user and host running **snazzer-receive**.
+
+You can take the following steps to slightly mitigate, reduce exposure to or at
+least slow an attacker should the **snazzer-receive** host or key be compromised:
+
+- Protect ssh keys
+
+    The ssh key used to authenticate **snazzer-receive** has passwordless sudo access
+    for `btrfs send` (among other things) and you should assume that whomever
+    wields it has access to everything:
+
+    - Avoid passphraseless ssh keyfiles
+
+        This should be obvious: once an attacker has copied such a keyfile they no
+        longer need the compromised host to authenticate, and you will have a bigger,
+        more urgent job searching for malicious use (and key removal from machines
+        which trusted it).
+
+    - Avoid ssh private keyfiles
+
+        Even passphrase-protected keyfiles are vulnerable to keyloggers and
+        memory scraping. Consider using smartcards/TPMs/Yubikeys/GoldKeys etc. to at
+        least force an attacker to depend on whichever machine has the authentication
+        device attached.
+
+        This is especially important when passphrase-protected keyfiles are not
+        practical (eg. running **snazzer-receive** from cron).
+
+    - Use the timeout option if using an ssh-agent
+
+- Grant minimal sudo rights
+
+    Refer to "sudo requirements for remote hosts". Don't give the **snazzer-receive**
+    user the option to run arbitrary commands remotely as root.
+
+- `~/.ssh/authorized_keys`: specify a forced-command/shell-wrapper
+
+    Even if sudo is locked down, don't give the **snazzer-receive** user the option
+    of running arbitrary commands remotely. Use a shell wrapper which permits only
+    the required sudo commands.
+    TODO: Document shell wrapper
+
+    NOTE: This does not prevent data exfiltration via `sudo btrfs send`, but
+    complicates further abuse of the account in other ways
+
+- `~/.ssh/authorized_keys`: restrict originating IP address
+
+    Use the `from` option to limit which machine the **snazzer-receive** host's ssh
+    key may connect from. This might slow down an attacker who has obtained the
+    private key somehow.
+
+    TODO: link to a guide on this
+
+- Disable interactive shells/logins
+
+    Don't give the **snazzer-receive** user the option of running arbitrary commands
+    remotely. Set the shell to `/bin/false` or equivalent. Disable the password.
+    NOTE: this doesn't stop ssh remote commands.
+    TODO: link to a guide on this
+
+- Log remote ssh commands
+
+    Most distros do zero logging of remote ssh commands. Logging such commands may
+    be your only way to spot abuse of the **snazzer-receive** account.
+    TODO: link to a guide on this
+
 # BUGS AND LIMITATIONS
 
 **NOTE 1:** **snazzer-receive** tries to recreate a filesystem similar to that of
@@ -69,6 +177,7 @@ non-zero exit status under the following conditions:
 - 1. invalid arguments
 - 2. `.snapshotz/.incomplete` already exists at a given destination subvolume
 - 9. tried to display man page with a formatter which is not installed
+- 12. remote ssh sudo command failed
 
 # TODO
 
@@ -83,16 +192,7 @@ non-zero exit status under the following conditions:
     the local measurements file.  If this bothers you, please report detailed
     use-cases to the author (patches welcome).
 
-- 2. document sudo and recommended sudoers files
-
-    The snazzer project has been written with the assumption that most systems
-    administrators will not want to run remote ssh commands either from or to the
-    root user. When a snazzer script requires root privileges and uid 0 is not
-    detected, these commands are prefixed with `sudo`. Example sudoers files to
-    restrict which commands are required for sudo operation shall be included at
-    some point.
-
-- 3. include restricted wrapper script to be used as ssh forced command
+- 2. include restricted wrapper script to be used as ssh forced command
 
     The snazzer project assumes that systems administrators would prefer to restrict
     the possible exposure of a dedicated snazzer remote user account, even if sudo
