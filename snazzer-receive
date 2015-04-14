@@ -78,8 +78,9 @@ list_remote_snapshot_measurements() {
     HOST="$1"
     HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-    do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
-        '$SUBVOL_ESC/.snapshotz/.measurements/' || true" | sed "s|^.*/||g"
+    MEAS_LIST=$(do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
+        '$SUBVOL_ESC/.snapshotz/.measurements/' || true")
+    echo "$MEAS_LIST" | sed "s|^.*/||g"
 }
 
 dry_send() {
