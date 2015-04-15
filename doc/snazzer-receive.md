@@ -4,23 +4,35 @@ snazzer-receive - receive remote snazzer snapshots to current working dir
 
 # SYNOPSIS
 
+Receive snapshots from remote host via ssh:
+
     snazzer-receive [--dry-run] host --all [/path/to/btrfs/mountpoint]
 
     snazzer-receive [--dry-run] host [/remote/subvol1 [/subvol2 [..]]]
 
+Receive snapshots from local filesystem:
+
+    snazzer-receive [--dry-run] -- --all [/path/to/btrfs/mountpoint]
+
+    snazzer-receive [--dry-run] -- /local/subvol1 [/subvol2 [..]]
+
 # DESCRIPTION
 
-First, **snazzer-receive** obtains a list of snapshots on the remote host. This
-is achieved by processing the first non-option positional argument as an ssh
-hostname with which to run `snazzer --list-snapshots [args]` remotely, where
-\[args\] are all subsequent **snazzer-receive** arguments (such as `--all` or
-`/remote/subvol1`).
+First, **snazzer-receive** obtains a list of snapshots to be received by running
+`snazzer --list-snapshots [args]`, where \[args\] are all **snazzer-receive**
+arguments after the hostname or `--` separator argument.
 
-**snazzer-receive** then iterates through this list of snapshots, recreating a
-filesystem similar to that of the remote host's by creating subvolumes and
-`.snapshotz` directories where necessary. Missing snapshots are instantiated
-directly with `btrfs send` and `btrfs receive`, using `btrfs send -p [parent]`
-where possible to reduce transport overhead of incremental snapshots.
+If the first non-option positional argument is `--`,
+`snazzer --list-snapshots [args]` is executed locally and \[args\] will refer to
+local filesystem paths. Otherwise, it is taken to mean an ssh hostname which is
+used to run the `snazzer --list-snapshots [args]` command remotely, and \[args\]
+will refer to paths on that remote host.
+
+**snazzer-receive** then iterates through this list of snapshots recreating a
+filesystem similar to the source by creating subvolumes and `.snapshotz`
+directories where necessary. Missing snapshots are instantiated directly with
+`btrfs send` and `btrfs receive`, using `btrfs send -p [parent]` where
+possible to reduce transport overhead of incremental snapshots.
 
 Rather than offer ssh user/port/host specifications through **snazzer-receive**,
 it is assumed all remote hosts are properly configured through your ssh config
@@ -33,36 +45,41 @@ file usually at `$HOME/.ssh/config`.
 - **--man**: Full documentation
 - **--man-roff**: Full documentation as \*roff output, Eg:
 
-        snazzer --man-roff | nroff -man
+        snazzer-receive --man-roff | nroff -man
 
 - **--man-markdown**: Full documentation as markdown output, Eg:
 
-        snazzer --man-markdown > snazzer-manpage.md
+        snazzer-receive --man-markdown > snazzer-manpage.md
 
 # ENVIRONMENT
 
-## sudo requirements for remote hosts
+## sudo requirements for sender/remote hosts
 
-**snazzer-receive** assumes its ssh user on the remote host has passwordless sudo
-for the commands it needs to run. Only a few commands are necessary, the
-following lines in `/etc/sudoers` or `/etc/sudoers.d/snazzer` should suffice
-(replace "sshuser" with the actual **snazzer-receive** ssh username):
+**snazzer-receive** assumes the ssh user (or local user, if receiving a local
+filesystem) which will be running `btrfs send` (among other things) has
+passwordless sudo for the commands it needs to run. Only a few commands are
+necessary, the following lines in `/etc/sudoers` or `/etc/sudoers.d/snazzer`
+should suffice (replace "sendinguser" with the actual username you will use):
 
-    sshuser ALL=(root:nobody) NOPASSWD: \
+    sendinguser ALL=(root:nobody) NOPASSWD: \
         /usr/bin/snazzer --list-snapshots *, \
         /bin/grep -srl */.snapshotz/.measurements/, \
         /sbin/btrfs send */.snapshotz/*, \
         /bin/cat */.snapshotz/.measurements/*
 
-## sudo/cron user requirements for hosts running **snazzer-receive**
+## sudo and cron user requirements for receiving hosts
 
-Running ssh as the root user is generally considered a bad idea, so when setting
-up a cron job to run **snazzer-receive** it should be run as a normal user
-dedicated to this task only - in which case the following lines in
-`/etc/sudoers` or `/etc/sudoers.d/snazzer` should suffice (replace
-"snazzeruser" with the actual username your cron job will use):
+For interactive use of **snazzer-receive**, a typical user with full sudo
+permissions should work out of the box.
 
-    snazzeruser ALL=(root:nobody) NOPASSWD: \
+For scripted use such as a cron job, or interactive use in more restrictive
+environments - running ssh as the root user is generally considered a bad idea.
+A dedicated non-root user will require at minimum the following lines in
+`/etc/sudoers` or `/etc/sudoers.d/snazzer` (replace "receiveruser" with the
+actual username your cron job will use, and remove `NOPASSWD:` if this is for
+an interactive/shell user):
+
+    receiveruser ALL=(root:nobody) NOPASSWD: \
       /usr/bin/test -e */.snapshotz*, \
       /sbin/btrfs subvolume show *, \
       /bin/ls */.snapshotz, \
@@ -85,13 +102,14 @@ the auth method used, but this documentation assumes key-based.
 Combined with passwordless sudo, remote hosts are vulnerable to and must have
 absolute trust in the ssh key-holder, user and host running **snazzer-receive**.
 
-You can take the following steps to slightly mitigate, reduce exposure to or at
-least slow an attacker should the **snazzer-receive** host or key be compromised:
+Your deployment should include or consider the following steps, among others not
+listed here, to attempt to reduce the impact of or slow down an attacker which
+has gained control of the **snazzer-receive** user accounts or ssh keys:
 
 - Protect ssh keys
 
-    The ssh key used to authenticate **snazzer-receive** has passwordless sudo access
-    for `btrfs send` (among other things) and you should assume that whomever
+    The ssh key used to authenticate **snazzer-receive** typically has passwordless
+    sudo for `btrfs send` (among other things) and you should assume that whomever
     wields it has access to everything:
 
     - Avoid passphraseless ssh keyfiles
@@ -104,12 +122,12 @@ least slow an attacker should the **snazzer-receive** host or key be compromised
     - Avoid ssh private keyfiles
 
         Even passphrase-protected keyfiles are vulnerable to keyloggers and
-        memory scraping. Consider using smartcards/TPMs/Yubikeys/GoldKeys etc. to at
-        least force an attacker to depend on whichever machine has the authentication
+        memory scraping. Consider using smartcards, TPMs, Yubikeys or GoldKeys etc. to
+        at least force an attacker to depend on whichever machine has the authentication
         device attached.
 
         This is especially important when passphrase-protected keyfiles are not
-        practical (eg. running **snazzer-receive** from cron).
+        practical (eg. scripted use of **snazzer-receive** such as cron).
 
     - Use the timeout option if using an ssh-agent
 
@@ -123,17 +141,18 @@ least slow an attacker should the **snazzer-receive** host or key be compromised
     Even if sudo is locked down, don't give the **snazzer-receive** user the option
     of running arbitrary commands remotely. Use a shell wrapper which permits only
     the required sudo commands.
+    TODO: provide example
     TODO: Document shell wrapper
 
     NOTE: This does not prevent data exfiltration via `sudo btrfs send`, but
-    complicates further abuse of the account in other ways
+    may slow down an attacker who would abuse the account in other ways.
 
 - `~/.ssh/authorized_keys`: restrict originating IP address
 
     Use the `from` option to limit which machine the **snazzer-receive** host's ssh
-    key may connect from. This might slow down an attacker who has obtained the
-    private key somehow.
-
+    key may connect from. This might force an attacker to still depend on the
+    **snazzer-receive** host even if they have obtained the private key somehow.
+    TODO: provide example
     TODO: link to a guide on this
 
 - Disable interactive shells/logins
@@ -151,7 +170,7 @@ least slow an attacker should the **snazzer-receive** host or key be compromised
 
 # BUGS AND LIMITATIONS
 
-**NOTE 1:** **snazzer-receive** tries to recreate a filesystem similar to that of
+**NOTE:** **snazzer-receive** tries to recreate a filesystem similar to that of
 the remote host, starting at the current working directory which represents the
 root filesystem. If the remote host has a root btrfs filesystem, this means that
 the current working directory should itself also be a btrfs subvolume in order
@@ -161,13 +180,6 @@ isn't already one.
 
 Therefore, if required, ensure the current working directory is already a btrfs
 subvolume prior to running **snazzer-receive** if you need to receive btrfs root.
-
-**NOTE 2:** `snazzer-receive host --all` may process a list of snapshots
-spanning multiple separate btrfs filesystems on a remote host, but unless extra
-steps are taken they will all be received into the same local filesystem under
-the current working directory. If this is not what you want, manually mount
-filesystems under the current working directory before running
-**snazzer-receive**.
 
 # EXIT STATUS
 
