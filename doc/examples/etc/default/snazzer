@@ -1,0 +1,11 @@
+export GNUPGHOME=/etc/secrets/snazzer/.gnupg
+
+#SNAZZER_DAYLIES_TO_KEEP=31
+#SNAZZER_HOURLIES_TO_KEEP=24
+#SNAZZER_MONTHLIES_TO_KEEP=12
+#SNAZZER_YEARLIES_TO_KEEP=1000
+#MY_KEYFILES_ARE_INVINCIBLE=0   # disable snazzer-measure GPG key sanity check
+#SNAZZER_SIG_ENABLE=0           # disable PGP signatures in measurements
+#SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude" # relative to snapshot root
+#SNAZZER_SUBVOLS_EXCLUDE_FILE=/etc/snazzer/exclude.patterns
+#SNAZZER_USE_UTC=1              # Use YYYY-MM-DDTHHMMSSZ rather than YYYY-MM-DDTTHHMMSS+hhmm

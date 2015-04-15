@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+. /etc/default/snazzer
+snazzer --all
+snazzer --prune --force --all
+snazzer --measure --all

@@ -1,0 +1,12 @@
+receiveruser ALL=(root:nobody) NOPASSWD: \
+  /usr/bin/test -e */.snapshotz*, \
+  /sbin/btrfs subvolume show *, \
+  /bin/ls */.snapshotz, \
+  /bin/grep -srL */.snapshotz/.measurements/, \
+  /bin/mkdir --mode=0755 */.snapshotz/.incomplete, \
+  /sbin/btrfs receive */.snapshotz/.incomplete, \
+  /sbin/btrfs subvolume snapshot -r */.snapshotz/.incomplete/* */.snapshotz/,\
+  /sbin/btrfs subvolume delete */.snapshotz/.incomplete/*, \
+  /bin/rmdir */.snapshotz/.incomplete, \
+  /bin/mkdir -vp --mode=0755 */.snapshotz/.measurements, \
+  /usr/bin/tee -a */.snapshotz/.measurements/*
