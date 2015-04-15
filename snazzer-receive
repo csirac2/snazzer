@@ -102,80 +102,102 @@ list_remote_snapshot_measurements() {
 
 dry_send() {
     HOST=$1
-    SUBVOL_PATH=$2
-    SNAP_PATH=$3
-    SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH=$4
+    SNAP_ABSPATH=$2
+    SNAP_ABSPATH_ESC=$(echo "$SNAP_ABSPATH" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH=$3
     SNAP_PARENT_PATH_ESC=$(echo "$SNAP_PARENT_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_NAME=$(basename "$SNAP_PATH")
-    PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH" ]; then
-        PARENT_SWITCH="-p '$SNAP_PARENT_PATH'" 
-        PARENT_SWITCH_ESC="-p '$SNAP_PARENT_PATH_ESC'" 
+    DEST_SUBVOL=$(echo "$SNAP_ABSPATH" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+    DEST_SUBVOL_ESC=$(echo "$SNAP_ABSPATH_ESC" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+    if [ -z "$DEST_SUBVOL" ]; then
+        DEST_SUBVOL="."
+        DEST_SUBVOL_ESC="."
     fi
-    # Don't forget to escape \$(mktemp), \$CMD and delete usage of \$SEND_ERR!
+    SNAP_NAME=$(basename "$SNAP_ABSPATH")
+    # Don't forget to escape \$(mktemp) and delete usage of \$SEND_ERR!
+    # Don't forget to use _ESC paths!
     cat <<CMD
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
-        "$SUBVOL_PATH/.snapshotz/.incomplete"
+        '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
     $(if [ "$LOCAL_RUN" = "1" ]; then
-        cat <<CMD2
-    $SUDO btrfs send "$SNAP_PATH" $PARENT_SWITCH | \
-        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+        if [ -n "$SNAP_PARENT_PATH" ]; then
+            cat <<CMD2
+                $SUDO btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC' | \
+                    $SUDO btrfs receive '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
 CMD2
-    else
-        cat <<CMD3
-    CMD="btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH_ESC"
-    ssh "$HOST" "sudo -n \$CMD" | \
-        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+        else
+            cat <<CMD3
+                $SUDO btrfs send '$SNAP_ABSPATH_ESC' | \
+                    $SUDO btrfs receive '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
 CMD3
+        fi
+    else
+        if [ -n "$SNAP_PARENT_PATH" ]; then
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC'"
+        else
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC'"
+        fi
+        cat <<CMD4
+        ssh '$HOST' "$CMD" | \
+            $SUDO btrfs receive '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
+CMD4
     fi)
     $SUDO btrfs subvolume snapshot -r \
-        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
-        "$SUBVOL_PATH/.snapshotz/" >/dev/null
+        '$DEST_SUBVOL_ESC/.snapshotz/.incomplete/$SNAP_NAME' \
+        '$DEST_SUBVOL_ESC/.snapshotz/' >/dev/null
     $SUDO btrfs subvolume delete \
-        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
-    $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
+        '$DEST_SUBVOL_ESC/.snapshotz/.incomplete/$SNAP_NAME' >/dev/null
+    $SUDO rmdir '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
 CMD
 }
 
 do_send() {
     # Don't forget to copy the lines below verbatim into dry_send()
     HOST=$1
-    SUBVOL_PATH=$2
-    SNAP_PATH=$3
-    SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH=$4
+    SNAP_ABSPATH=$2
+    SNAP_ABSPATH_ESC=$(echo "$SNAP_ABSPATH" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH=$3
     SNAP_PARENT_PATH_ESC=$(echo "$SNAP_PARENT_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_NAME=$(basename "$SNAP_PATH")
-    PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH" ]; then
-        PARENT_SWITCH="-p '$SNAP_PARENT_PATH'" 
-        PARENT_SWITCH_ESC="-p '$SNAP_PARENT_PATH_ESC'" 
+    DEST_SUBVOL=$(echo "$SNAP_ABSPATH" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+    DEST_SUBVOL_ESC=$(echo "$SNAP_ABSPATH_ESC" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
+    if [ -z "$DEST_SUBVOL" ]; then
+        DEST_SUBVOL="."
+        DEST_SUBVOL_ESC="."
     fi
+    SNAP_NAME=$(basename "$SNAP_ABSPATH")
     # Can't use do_ssh below, we must stream ssh output to btrfs receive
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
-    SEND_ERR=$(mktemp)
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
-        "$SUBVOL_PATH/.snapshotz/.incomplete"
+        "$DEST_SUBVOL/.snapshotz/.incomplete"
     if [ "$LOCAL_RUN" = "1" ]; then
+        if [ -n "$SNAP_PARENT_PATH" ]; then
     # Don't forget to copy the lines below into dry_send() between CMD2 heredoc
-        $SUDO btrfs send "$SNAP_PATH" $PARENT_SWITCH | \
-            $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
-    else
+            $SUDO btrfs send "$SNAP_ABSPATH" -p "$SNAP_PARENT_PATH" | \
+                $SUDO btrfs receive "$DEST_SUBVOL/.snapshotz/.incomplete"
+        else
     # Don't forget to copy the lines below into dry_send() between CMD3 heredoc
-        CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH_ESC"
+            $SUDO btrfs send "$SNAP_ABSPATH" | \
+                $SUDO btrfs receive "$DEST_SUBVOL/.snapshotz/.incomplete"
+        fi
+    else
+    # Don't forget to copy the lines below into dry_send() between CMD4 heredoc
+        if [ -n "$SNAP_PARENT_PATH" ]; then
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC'"
+        else
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC'"
+        fi
+        SEND_ERR=$(mktemp)
         (ssh "$HOST" "$CMD" 2>"$SEND_ERR" || \
             check_ssh_err "$HOST" "$CMD" "$SEND_ERR" "$?") | \
-            $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+            $SUDO btrfs receive "$DEST_SUBVOL/.snapshotz/.incomplete"
+        rm "$SEND_ERR"
     fi
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
     $SUDO btrfs subvolume snapshot -r \
-        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
-        "$SUBVOL_PATH/.snapshotz/" >/dev/null
+        "$DEST_SUBVOL/.snapshotz/.incomplete/$SNAP_NAME" \
+        "$DEST_SUBVOL/.snapshotz/" >/dev/null
     $SUDO btrfs subvolume delete \
-        "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
-    $SUDO rmdir "$SUBVOL_PATH/.snapshotz/.incomplete"
-    rm "$SEND_ERR"
+        "$DEST_SUBVOL/.snapshotz/.incomplete/$SNAP_NAME" >/dev/null
+    $SUDO rmdir "$DEST_SUBVOL/.snapshotz/.incomplete"
 }
 
 dry_copy() {
@@ -336,34 +358,36 @@ do_subvolume() {
     HOST=$1
     SUBVOL=$2
     if [ -z "$SUBVOL" ]; then
-        SUBVOL_PATH="."
-    else
-        SUBVOL_PATH="$SUBVOL"
+        SUBVOL="."
     fi
-    SUBVOL_PATH_ESC=$(echo "$SUBVOL_PATH" | sed "s|'|'\\\\''|g") 
-    echo "subvolume $SUBVOL_PATH:"
-    if $SUDO test -e "$SUBVOL_PATH/.snapshotz/.incomplete"; then
+    SUBVOL_ESC=$(echo "$SUBVOL" | sed "s|'|'\\\\''|g") 
+    echo "subvolume $SUBVOL:"
+    if $SUDO test -e "$SUBVOL/.snapshotz/.incomplete"; then
         cat <<HERE >&2
 
-ERROR: $SUBVOL_PATH/.snapshotz/.incomplete exists. Another instance is already
+ERROR: $SUBVOL/.snapshotz/.incomplete exists. Another instance is already
 running, or a previous invocation was interrupted. If you are sure no other
 instances are already running, remove this directory and snapshots under it:
 
-btrfs subvolume delete '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'/*
-rmdir '$SUBVOL_PATH_ESC/.snapshotz/.incomplete'
+btrfs subvolume delete '$SUBVOL_ESC/.snapshotz/.incomplete'/*
+rmdir '$SUBVOL_ESC/.snapshotz/.incomplete'
 HERE
         exit 2
     fi
-    if [ "$(is_subvol "$SUBVOL_PATH")" != "1" ]; then
-        create_subvol "$SUBVOL_PATH"
+    if [ "$(is_subvol "$SUBVOL")" != "1" ]; then
+        create_subvol "$SUBVOL"
     fi
-    if ! $SUDO test -e "$SUBVOL_PATH/.snapshotz"; then
+    if ! $SUDO test -e "$SUBVOL/.snapshotz"; then
         $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
-            "$SUBVOL_PATH/.snapshotz"
+            "$SUBVOL/.snapshotz"
     fi
     # Last snapshot seen in the local target fs
     PREV_SNAP=
-    SNAPSHOTS=$(do_list_snapshots "$HOST" "/$SUBVOL_PATH")
+    if [ "$SUBVOL" = "." ]; then
+        SNAPSHOTS=$(do_list_snapshots "$HOST" "/")
+    else
+        SNAPSHOTS=$(do_list_snapshots "$HOST" "/$SUBVOL")
+    fi
     SNAP_WANT=$(mktemp)
     echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
     NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
@@ -374,25 +398,20 @@ HERE
     NUM_SKIP=0
     while read SNAPSHOT
     do
-        SUBVOL_PATH=$(echo "$SNAPSHOT" | sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g')
-        SNAP_PATH=$(echo "$SNAPSHOT" | sed 's|^/||g')
-        if [ -z "$SUBVOL_PATH" ]; then
-            SUBVOL_PATH="."
-        fi
-        if $SUDO test -e "$SNAP_PATH"; then
+        SNAP_RELPATH=$(echo "$SNAPSHOT" | sed 's|^/*||g')
+        if $SUDO test -e "$SNAP_RELPATH"; then
             NUM_SKIP=$(expr $NUM_SKIP + 1)
         else
             NUM_RECV=$(expr $NUM_RECV + 1)
-            if [ -n "$PREV_SNAP" ]; then PREV_SNAP="/$PREV_SNAP"; fi
             if [ "$DRY_RUN" != "0" ]; then
                 dry_send \
-                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
+                    "$HOST" "$SNAPSHOT" "$PREV_SNAP"
             else
                 do_send \
-                    "$HOST" "$SUBVOL_PATH" "/$SNAP_PATH" "$PREV_SNAP"
+                    "$HOST" "$SNAPSHOT" "$PREV_SNAP"
             fi
         fi
-        PREV_SNAP="$SNAP_PATH"
+        PREV_SNAP="$SNAPSHOT"
     done < "$SNAP_WANT"
     rm "$SNAP_WANT"
     printf "  $NUM_RECV of $NUM_SNAP snapshots received "
