@@ -12,7 +12,7 @@ fi
 
 squote_args() {
     while [ -n "$1" ]; do
-        echo -n "'"; echo -n "$1" | sed "s|'|'\\\\''|g"; echo -n "' "
+        printf "'"; printf "$1" | sed "s|'|'\\\\''|g"; printf "' "
         shift
     done
 }
@@ -219,7 +219,7 @@ do_subvolume_measurements() {
         SUBVOL_RELPATH="$SUBVOL"
     fi
     SUBVOL_RELPATH_ESC=$(echo "$SUBVOL_RELPATH" | sed "s|'|'\\\\''|g") 
-    echo -n "  appending measurements..."
+    printf "  appending measurements..."
     if $SUDO test -e "$SUBVOL_RELPATH/.snapshotz/.incomplete"; then
         cat <<HERE >&2
 
@@ -340,7 +340,7 @@ HERE
         PREV_SNAP="$SNAP_PATH"
     done < "$SNAP_WANT"
     rm "$SNAP_WANT"
-    echo -n "  $NUM_RECV of $NUM_SNAP snapshots received "
+    printf "  $NUM_RECV of $NUM_SNAP snapshots received "
     echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
 }
 
@@ -367,10 +367,10 @@ do_host() {
         do_subvolume "$HOST" "$SUBVOL"
         do_subvolume_measurements "$HOST" "$SUBVOL"
     done
-    echo -n "Processed $NUM_SUBVOL subvolume(s)."
+    printf "Processed $NUM_SUBVOL subvolume(s)."
     if [ -s "$LIST_ERR" ]; then
         echo " Additional output from:"
-        echo -n "  "
+        printf "  "
         dry_list_snapshots "$HOST" "$@"
         grep . "$LIST_ERR" | sed 's/^/    /g'
     else
