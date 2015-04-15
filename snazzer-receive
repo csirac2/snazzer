@@ -60,26 +60,43 @@ do_ssh() {
 }
 
 dry_list_snapshots() {
-    HOST="$1"
+    HOST=$1
     shift
-    cat <<CMD
+    if [ "$LOCAL_RUN" = "1" ]; then
+        cat <<CMD1
+    $SUDO snazzer --list-snapshots "$@"
+CMD1
+    else
+        cat <<CMD2
     ssh "$HOST" "sudo -n snazzer --list-snapshots $(squote_args "$@")"
-CMD
+CMD2
+    fi
 }
 
 do_list_snapshots() {
-    HOST="$1"
+    HOST=$1
     shift
-    # Don't forget to copy the lines below into dry_list_snapshots() between CMD
-    do_ssh "$HOST" "sudo -n snazzer --list-snapshots $(squote_args "$@")"
+    if [ "$LOCAL_RUN" = "1" ]; then
+    # Don't forget to copy the lines below into dry_list_snapshots between CMD1
+        $SUDO snazzer --list-snapshots "$@"
+    else
+    # Don't forget to copy the lines below into dry_list_snapshots between CMD2
+        do_ssh "$HOST" "sudo -n snazzer --list-snapshots $(squote_args "$@")"
+    fi
 }
 
 list_remote_snapshot_measurements() {
-    HOST="$1"
+    HOST=$1
     HOST_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
-    SUBVOL_ESC=$(echo "$2" | sed "s|'|'\\\\''|g")
-    MEAS_LIST=$(do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
-        '$SUBVOL_ESC/.snapshotz/.measurements/' || true")
+    SUBVOL=$2
+    SUBVOL_ESC=$(echo "$SUBVOL" | sed "s|'|'\\\\''|g")
+    if [ "$LOCAL_RUN" = "1" ]; then
+        MEAS_LIST=$($SUDO grep -srl "^> on $HOST at " \
+            "$SUBVOL/.snapshotz/.measurements/" || true)
+    else
+        MEAS_LIST=$(do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
+            '$SUBVOL_ESC/.snapshotz/.measurements/' || true")
+    fi
     echo "$MEAS_LIST" | sed "s|^.*/||g"
 }
 
@@ -88,19 +105,30 @@ dry_send() {
     SUBVOL_PATH=$2
     SNAP_PATH=$3
     SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH_ESC=$(echo "$4" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH=$4
+    SNAP_PARENT_PATH_ESC=$(echo "$SNAP_PARENT_PATH" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$(basename "$SNAP_PATH")
     PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
-        PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
+    if [ -n "$SNAP_PARENT_PATH" ]; then
+        PARENT_SWITCH="-p '$SNAP_PARENT_PATH'" 
+        PARENT_SWITCH_ESC="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
     # Don't forget to escape \$(mktemp), \$CMD and delete usage of \$SEND_ERR!
     cat <<CMD
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    CMD="btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
+    $(if [ "$LOCAL_RUN" = "1" ]; then
+        cat <<CMD2
+    $SUDO btrfs send "$SNAP_PATH" $PARENT_SWITCH | \
+        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+CMD2
+    else
+        cat <<CMD3
+    CMD="btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH_ESC"
     ssh "$HOST" "sudo -n \$CMD" | \
         $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+CMD3
+    fi)
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
         "$SUBVOL_PATH/.snapshotz/" >/dev/null
@@ -116,21 +144,31 @@ do_send() {
     SUBVOL_PATH=$2
     SNAP_PATH=$3
     SNAP_PATH_ESC=$(echo "$SNAP_PATH" | sed "s|'|'\\\\''|g")
-    SNAP_PARENT_PATH_ESC=$(echo "$4" | sed "s|'|'\\\\''|g")
+    SNAP_PARENT_PATH=$4
+    SNAP_PARENT_PATH_ESC=$(echo "$SNAP_PARENT_PATH" | sed "s|'|'\\\\''|g")
     SNAP_NAME=$(basename "$SNAP_PATH")
     PARENT_SWITCH=""
-    if [ -n "$SNAP_PARENT_PATH_ESC" ]; then
-        PARENT_SWITCH="-p '$SNAP_PARENT_PATH_ESC'" 
+    if [ -n "$SNAP_PARENT_PATH" ]; then
+        PARENT_SWITCH="-p '$SNAP_PARENT_PATH'" 
+        PARENT_SWITCH_ESC="-p '$SNAP_PARENT_PATH_ESC'" 
     fi
     # Can't use do_ssh below, we must stream ssh output to btrfs receive
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
     SEND_ERR=$(mktemp)
     $SUDO mkdir --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_PATH/.snapshotz/.incomplete"
-    CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH"
-    (ssh "$HOST" "$CMD" 2>"$SEND_ERR" || \
-        check_ssh_err "$HOST" "$CMD" "$SEND_ERR" "$?") | \
-        $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    if [ "$LOCAL_RUN" = "1" ]; then
+    # Don't forget to copy the lines below into dry_send() between CMD2 heredoc
+        $SUDO btrfs send "$SNAP_PATH" $PARENT_SWITCH | \
+            $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    else
+    # Don't forget to copy the lines below into dry_send() between CMD3 heredoc
+        CMD="sudo -n btrfs send '$SNAP_PATH_ESC' $PARENT_SWITCH_ESC"
+        (ssh "$HOST" "$CMD" 2>"$SEND_ERR" || \
+            check_ssh_err "$HOST" "$CMD" "$SEND_ERR" "$?") | \
+            $SUDO btrfs receive "$SUBVOL_PATH/.snapshotz/.incomplete"
+    fi
+    # Don't forget to copy the lines below into dry_send() between CMD heredoc
     $SUDO btrfs subvolume snapshot -r \
         "$SUBVOL_PATH/.snapshotz/.incomplete/$SNAP_NAME" \
         "$SUBVOL_PATH/.snapshotz/" >/dev/null
@@ -143,16 +181,25 @@ do_send() {
 dry_copy() {
     HOST=$1
     SUBVOL_REMOTEPATH=$2
-    SUBVOL_LOCALPATH=$3
     SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
+    SUBVOL_LOCALPATH=$3
     SNAP_NAME=$4
     # Don't forget to escape \$(mktemp), \$MEAS_TMP, \$CMD!
     cat <<CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
-    CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
     MEAS_TMP=\$(mktemp)
+    $(if [ "$LOCAL_RUN" = "1" ]; then
+        cat <<CMD2
+    $SUDO cat "$SUBVOL_REMOTEPATH/.snapshotz/.measurements/$SNAP_NAME" \
+        >"\$MEAS_TMP"
+CMD2
+    else
+        cat <<CMD3
+    CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
     ssh "$HOST" "sudo -n \$CMD" >"\$MEAS_TMP"
+CMD3
+    fi)
     cat "\$MEAS_TMP" | $SUDO tee -a \
         "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
     rm "\$MEAS_TMP"
@@ -163,16 +210,24 @@ do_copy() {
     # Don't forget to copy the lines below verbatim into dry_copy()
     HOST=$1
     SUBVOL_REMOTEPATH=$2
-    SUBVOL_LOCALPATH=$3
     SUBVOL_REMOTEPATH_ESC=$(echo "$SUBVOL_REMOTEPATH" | sed "s|'|'\\\\''|g")
+    SUBVOL_LOCALPATH=$3
     SNAP_NAME=$4
     # We're using tee below to avoid giving sudo for cp
     # Don't forget to copy the lines below verbatim into dry_copy() between CMD
     $SUDO mkdir -vp --mode="$SNAZZER_SNAPSHOTZ_PERMS" \
         "$SUBVOL_REMOTEPATH/.snapshotz/.measurements"
-    CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
     MEAS_TMP=$(mktemp)
-    do_ssh "$HOST" "sudo -n $CMD" >"$MEAS_TMP"
+    if [ "$LOCAL_RUN" = "1" ]; then
+    # Don't forget to copy the lines below verbatim into dry_copy() between CMD2
+        $SUDO cat "$SUBVOL_REMOTEPATH/.snapshotz/.measurements/$SNAP_NAME" \
+            >"$MEAS_TMP"
+    else
+    # Don't forget to copy the lines below verbatim into dry_copy() between CMD3
+        CMD="cat '$SUBVOL_REMOTEPATH_ESC/.snapshotz/.measurements/$SNAP_NAME'"
+        do_ssh "$HOST" "sudo -n $CMD" >"$MEAS_TMP"
+    fi
+    # Don't forget to copy the lines below verbatim into dry_copy() between CMD
     cat "$MEAS_TMP" | $SUDO tee -a \
         "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
     rm "$MEAS_TMP"
@@ -381,15 +436,25 @@ do_host() {
 }
 
 DRY_RUN=0
+LOCAL_RUN=0
 
-while [ "$(echo "$1" | grep -c "^-")" != 0 ]
+while [ "$(echo "$1" | grep -c "^-")" != "0" -a "$LOCAL_RUN" != "1" ]
 do
     case "$1" in
-        -h | --help ) pod2usage -exit 0 "$0"; exit ;;
-             --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
-             --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
-             --man-markdown )
-             cat <<HERE | perl -Mstrict
+        -h | --help )
+            pod2usage -exit 0 "$0"
+            exit
+            ;;
+        --man )
+            pod2usage -exit 0 -verbose 3 "$0"
+            exit
+            ;;
+        --man-roff )
+            pod2man --release=$SNAZZER_VERSION "$0"
+            exit
+            ;;
+        --man-markdown )
+            cat <<HERE | perl -Mstrict
 if ( eval { require Pod::Markdown; 1; } ) {
     Pod::Markdown->new->filter('$0');
 }
@@ -398,11 +463,20 @@ else {
     exit 9;
 }
 HERE
-                 exit ;;
-        -d | --dry-run ) DRY_RUN=1; ;;
-        * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+            exit
+            ;;
+        -d | --dry-run )
+            DRY_RUN=1;
+            shift
+            ;;
+        -- )
+            LOCAL_RUN=1
+            ;;
+        * )
+            echo "ERROR: Invalid argument '$1'" >&2
+            exit
+            ;;
     esac
-    shift
 done
 
 if [ -z "$1" ]; then
