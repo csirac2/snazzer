@@ -41,18 +41,18 @@ build_tar_cmd() {
     DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
 
     cat <<CMD
-cd '$DIR_ESC' && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | \
-tar --null -T - --no-recursion --preserve-permissions --one-file-system -c \
---to-stdout --exclude-from '$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
+find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -printf './%P\0' | LC_ALL=C sort -z | \
+tar -C '$DIR_ESC' --null -T - --no-recursion --preserve-permissions --one-file-system -c \
+--to-stdout --exclude-from '$DIR_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
 CMD
 }
 
 do_tar() {
     DIR=$1
 
-    cd "$DIR" && find . -xdev -not -name '.' -print0 | LC_ALL=C sort -z | \
-tar --null -T - --no-recursion --preserve-permissions --one-file-system -c \
---to-stdout --exclude-from "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    find "$DIR" -xdev -not -path "$DIR" -printf './%P\0' | LC_ALL=C sort -z | \
+tar -C "$DIR" --null -T - --no-recursion --preserve-permissions --one-file-system -c \
+--to-stdout --exclude-from "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 }
 
 measure_sha512sum() {
@@ -92,9 +92,9 @@ dry_find() {
     DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
     EXCL=$(build_find_excl_switch "$1")
     cat <<CMD
-find '$DIR_ESC' -xdev -not -name '.' -path '/tmp' -prune -o $EXCL -type f \
-    -printf "%T@ '%p'\\\n" | sort -n | tail -1 | cut -f2- -d" " | \
-    xargs ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
+find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -path '/tmp' -prune -o $EXCL -type f \
+    -printf "%T@ './%P'\\\0" | sort -n | tail -1 | cut -f2- -d" " | \
+    xargs -0 ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
 CMD
 }
 
