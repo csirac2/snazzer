@@ -365,10 +365,10 @@ time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 
 When running B<snazzer-measure> as a non-root user, certain commands will be
 prefixed with C<sudo>. The following lines in C</etc/sudoers> or
-C</etc/sudoers.d/snazzer> should suffice (replace C<measureuser> with the actual
-user name you are setting up for this task):
+C</etc/sudoers.d/snazzer> should suffice for scripted jobs such as cron (replace
+C<measureuser> with the actual user name you are setting up for this task):
 
-    measureuser ALL=(root:nobody) NOPASSWD: \
+    measureuser ALL=(root:nobody) NOPASSWD:NOEXEC: \
         /bin/cat */.snapshotz/*/.snapshot_measurements.exclude, \
         /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
         /usr/bin/find */.snapshotz/* \

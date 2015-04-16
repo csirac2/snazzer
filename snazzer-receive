@@ -597,7 +597,7 @@ C</etc/sudoers> or C</etc/sudoers.d/snazzer> (replace "receiveruser" with the
 actual username your cron job will use, and remove C<NOPASSWD:> if this is for
 an interactive/shell user):
 
-    receiveruser ALL=(root:nobody) NOPASSWD: \
+    receiveruser ALL=(root:nobody) NOPASSWD:NOEXEC: \
       /usr/bin/test -e */.snapshotz*, \
       /sbin/btrfs subvolume show *, \
       /bin/ls */.snapshotz, \

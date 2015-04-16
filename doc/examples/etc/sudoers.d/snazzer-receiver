@@ -1,4 +1,4 @@
-receiveruser ALL=(root:nobody) NOPASSWD: \
+receiveruser ALL=(root:nobody) NOPASSWD:NOEXEC: \
   /usr/bin/test -e */.snapshotz*, \
   /sbin/btrfs subvolume show *, \
   /bin/ls */.snapshotz, \
