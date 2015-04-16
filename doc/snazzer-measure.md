@@ -5,19 +5,19 @@ along with commands to reproduce or verify data is unchanged
 
 # SYNOPSIS
 
-    snazzer-measure /some/path >> path_measurements
+    snazzer-measure /measured/path [/reported/path] >> path_measurements
 
 # DESCRIPTION
 
-Creates reproducible fingerprints of the content under a given directory, along
-with the commands necessary (relative to a sibling directory of the supplied
+Creates reproducible fingerprints of the given directory, along with commands
+necessary (relative to measured path, or if supplied - the optional reported
 path) to reproduce the measurement using only standard core GNU userland.
 
 The output includes:
 
 - hostname and datetime of **snazzer-measure** invocation
 - `du -bs` (bytes used)
-- sha512sum of the result of a reproducible tarball of the directory
+- `sha512sum` of the result of a reproducible tarball of the directory
 - `gpg2 --armor --sign` of the same
 - instructions for reproducing or verifying each of the above
 - `tar --version`, `tar --show-defaults`
@@ -66,6 +66,22 @@ The output includes:
     Use UTC times of the form `YYYY-MM-DDTHHMMSSZ` instead of the default local
     time+offset `YYYY-MM-DDTHHMMSS+hhmm`
 
+## sudo requirements
+
+When running **snazzer-measure** as a non-root user, certain commands will be
+prefixed with `sudo`. The following lines in `/etc/sudoers` or
+`/etc/sudoers.d/snazzer` should suffice (replace `measureuser` with the actual
+user name you are setting up for this task):
+
+    measureuser ALL=(root:nobody) NOPASSWD: \
+        /bin/cat */.snapshotz/*/.snapshot_measurements.exclude, \
+        /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
+        /usr/bin/find */.snapshotz/* \
+            -xdev -not -path /*/.snapshotz/* -printf ./%P\\\\0, \
+        /bin/tar --no-recursion --one-file-system --preserve-permissions --null\
+            --create --to-stdout --directory */.snapshotz/* --files-from * \
+            --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
+
 # EXIT STATUS
 
 **snazzer-measure** will abort with an error message printed to STDERR and
@@ -73,7 +89,6 @@ non-zero exit status under the following conditions:
 
 - 1. Invalid argument
 - 2. Path string not specified
-- 3. Path string not a directory
 - 4. GPG signature would have been generated with a secret keyfile stored
 in a subvolume which has not been excluded from default snazzer snapshots, see
 [IMPORTANT](https://metacpan.org/pod/IMPORTANT) below
