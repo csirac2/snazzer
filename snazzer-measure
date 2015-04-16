@@ -161,10 +161,15 @@ feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
 # https://wiki.debian.org/ReproducibleBuilds/FileOrderInTarballs
 measure() {
     MEAS_DIR=$1
+    FAKE_DIR=$2
+
+    if [ -z "$FAKE_DIR" ]; then
+        FAKE_DIR="$MEAS_DIR"
+    fi
     cat <<HERE
 ################################################################################
 HERE
-    measure_du "$MEAS_DIR"
+    measure_du "$FAKE_DIR"
     #measure_latest "$MEAS_DIR"
     # Sometimes, it's mildly faster to run sha512sum and gpg signing in parallel
     # especially on I/O starved VMs.
@@ -179,10 +184,10 @@ HERE
         SHA512_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
         GPG_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
         (do_tar "$MEAS_DIR") | tee "$TMP_FIFO" | \
-            measure_sha512sum "$MEAS_DIR" > "$SHA512_MEASUREMENT" &
+            measure_sha512sum "$FAKE_DIR" > "$SHA512_MEASUREMENT" &
         sleep 1 # SMELLLLLL... avoid stupid race condition where it seems that
                 # measure_gpg starts before tee does
-        measure_gpg "$MEAS_DIR" < "$TMP_FIFO" > "$GPG_MEASUREMENT"
+        measure_gpg "$FAKE_DIR" < "$TMP_FIFO" > "$GPG_MEASUREMENT"
         # And if we put their respective output straight to stdout, we sometimes
         # get their output intermixedue
         cat "$SHA512_MEASUREMENT"
@@ -192,7 +197,7 @@ HERE
         rm "$TMP_FIFO"
         rmdir "$TMP_DIR"
     else
-        (do_tar "$MEAS_DIR") | measure_sha512sum "$MEAS_DIR"
+        (do_tar "$MEAS_DIR") | measure_sha512sum "$FAKE_DIR"
     fi
     measure_tar_info
 }
@@ -232,7 +237,7 @@ else
         echo "ERROR: path '$1' is not a directory" >&2
         exit 3
     else
-        measure "$1"
+        measure "$1" "$2"
     fi
 fi
 
@@ -245,12 +250,12 @@ along with commands to reproduce or verify data is unchanged
 
 =head1 SYNOPSIS
 
-  snazzer-measure /some/path >> path_measurements
+  snazzer-measure /measured/path [/reported/path] >> path_measurements
 
 =head1 DESCRIPTION
 
-Creates reproducible fingerprints of the content under a given directory, along
-with the commands necessary (relative to a sibling directory of the supplied
+Creates reproducible fingerprints of the given directory, along with commands
+necessary (relative to measured path, or if supplied - the optional reported
 path) to reproduce the measurement using only standard core GNU userland.
 
 The output includes:
@@ -261,7 +266,7 @@ The output includes:
 
 =item * C<du -bs> (bytes used)
 
-=item * sha512sum of the result of a reproducible tarball of the directory
+=item * C<sha512sum> of the result of a reproducible tarball of the directory
 
 =item * C<gpg2 --armor --sign> of the same
 

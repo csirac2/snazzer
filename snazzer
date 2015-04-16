@@ -347,16 +347,18 @@ measure_unlock() {
 dry_measure() {
     SUBVOL_ESC=$(echo "$1" | sed "s/'/'\\\\''/g")
     REPORT_ESC=$(echo "$2" | sed "s/'/'\\\\''/g")
+    FAKEPATH_ESC=$(echo "$3" | sed "s/'/'\\\\''/g")
 
     cat <<HERE
-snazzer-measure '$SUBVOL_ESC' >> '$REPORT_ESC';
+snazzer-measure '$SUBVOL_ESC' '$FAKEPATH_ESC' >> '$REPORT_ESC';
 HERE
 }
 
 do_measure() {
     SUBVOL=$1
     REPORT=$2
-    snazzer-measure "$SUBVOL" >> "$REPORT";
+    FAKEPATH=$3
+    snazzer-measure "$SUBVOL" "$FAKEPATH" >> "$REPORT";
 }
 
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems
@@ -399,20 +401,19 @@ measure() {
     echo "$SUBVOL: measuring $NUM_MEAS of $NUM_AVAIL"
     if [ -n "$SNAP_LIST" ]; then
         if [ "$DRY_RUN" = "1" ]; then
-            echo "cd '$( echo "$SUBVOL_SHOTZ/.measurements" | \
-                sed "s|'|'\\\\''|g")'"
             echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
-                echo "echo '  $SNAP_NAME'"
-                dry_measure "../$SNAP_NAME" "$SNAP_NAME"
+                echo "  $SNAP_NAME"
+                SNAP_PATH_ESC=$(echo "$SUBVOL_SHOTZ/$SNAP_NAME" | sed "s|'|'\\\\''|g")
+                REPORT_PATH_ESC=$(echo "$SUBVOL_SHOTZ/.measurements/$SNAP_NAME" | sed "s|'|'\\\\''|g")
+                dry_measure "$SNAP_PATH_ESC" "$REPORT_PATH_ESC" "../$SNAP_NAME"
             done
         else
-            (
-                cd "$SUBVOL_SHOTZ/.measurements"
-                echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
-                    echo "  $SNAP_NAME"
-                    do_measure "../$SNAP_NAME" "$SNAP_NAME"
-                done
-            )
+            echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
+                echo "  $SNAP_NAME"
+                SNAP_PATH="$SUBVOL_SHOTZ/$SNAP_NAME"
+                REPORT_PATH="$SUBVOL_SHOTZ/.measurements/$SNAP_NAME"
+                do_measure "$SNAP_PATH" "$REPORT_PATH" "../$SNAP_NAME"
+            done
         fi
     fi
     measure_unlock
