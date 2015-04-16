@@ -358,7 +358,12 @@ do_measure() {
     SUBVOL=$1
     REPORT=$2
     FAKEPATH=$3
-    snazzer-measure "$SUBVOL" "$FAKEPATH" >> "$REPORT";
+    REPORT_TMP=$(mktemp)
+    # Avoid putting this in a pipe in case snazzer-measure aborts with error.
+    # Also, using a tempfile avoids writing partial measurements to the report.
+    snazzer-measure "$SUBVOL" "$FAKEPATH" > "$REPORT_TMP"
+    cat "$REPORT_TMP" | $SUDO tee -a "$REPORT" >/dev/null
+    rm "$REPORT_TMP"
 }
 
 # If DO_FORCE=1, measure all snapshots regardless of whether the hostname seems

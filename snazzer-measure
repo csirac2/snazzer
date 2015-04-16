@@ -1,7 +1,7 @@
 #!/bin/sh
 
 set -e
-SNAZZER_VERSION=0.3
+SNAZZER_VERSION=0.4
 
 # Keep in sync with the POD!
 default_snazzer_sig_func() {
@@ -14,6 +14,12 @@ fi
 # Keep in sync with the POD!
 if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
     SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
+fi
+
+if [ "$(id -u)" = "0" ]; then
+    SUDO=""
+else
+    SUDO="sudo"
 fi
 
 do_snazzer_sig() {
@@ -41,18 +47,32 @@ build_tar_cmd() {
     DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
 
     cat <<CMD
-find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -printf './%P\0' | LC_ALL=C sort -z | \
-tar -C '$DIR_ESC' --null -T - --no-recursion --preserve-permissions --one-file-system -c \
---to-stdout --exclude-from '$DIR_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
+find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -printf './%P\0' | \
+LC_ALL=C sort -z | \
+tar --no-recursion --one-file-system --preserve-permissions \
+--null --create --to-stdout \
+--directory '$DIR_ESC' \
+--files-from - \
+--exclude-from '$DIR_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
 CMD
 }
 
 do_tar() {
     DIR=$1
+    LIST_TMP=$(mktemp)
+    SORT_TMP=$(mktemp)
 
-    find "$DIR" -xdev -not -path "$DIR" -printf './%P\0' | LC_ALL=C sort -z | \
-tar -C "$DIR" --null -T - --no-recursion --preserve-permissions --one-file-system -c \
---to-stdout --exclude-from "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
+    chmod 0700 "$LIST_TMP"
+    # Keep tar/find out of the pipe in case they have errors
+    $SUDO find "$DIR" -xdev -not -path "$DIR" -printf './%P\0' >"$LIST_TMP" && \
+        LC_ALL=C sort -z "$LIST_TMP" > "$SORT_TMP" && \
+        $SUDO tar --no-recursion --one-file-system --preserve-permissions \
+            --null --create --to-stdout \
+            --directory "$DIR" \
+            --files-from "$SORT_TMP" \
+            --exclude-from "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" && \
+        rm "$SORT_TMP" && \
+        rm "$LIST_TMP"
 }
 
 measure_sha512sum() {
@@ -74,8 +94,15 @@ CMD
 
 do_du() {
     DIR=$1
-    du -bs --one-file-system --exclude-from \
-        "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" "$DIR"
+    EXCL_TMP=$(mktemp)
+    # du doesn't understand relative exclude rules, so make them absolute
+    # could use sed but that means complicated escapes to deal with hostile $DIR
+    $SUDO cat "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" | while read EXCL_RULE
+    do
+        echo "$DIR/$EXCL_RULE" >> "$EXCL_TMP"
+    done
+    $SUDO du -bs --one-file-system --exclude-from "$EXCL_TMP" "$DIR"
+    rm "$EXCL_TMP"
 }
 
 build_find_excl_switch() {
@@ -107,8 +134,9 @@ measure_latest() {
 
 measure_du() {
     DIR=$1
+    FAKE_DIR=$2
     host_datetime "du bytes"
-    build_du_cmd "$DIR"
+    build_du_cmd "$FAKE_DIR"
     do_du "$DIR"
     echo ""
 }
@@ -126,7 +154,9 @@ measure_gpg() {
     HOST_DATETIME=$(host_datetime "gpg")
     echo "$HOST_DATETIME"
     cat <<CMD
-(SIG=\$(mktemp) && cat '$MEAS_FILE' | grep -v '/,/' | sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' > \$SIG && $(build_tar_cmd "$DIR") | gpg2 --verify \$SIG -)
+(SIG=\$(mktemp) && grep -v '/,/' '$MEAS_FILE' | \
+sed -n '/$HOST_DATETIME/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; \${x;p}' \
+>"\$SIG" && $(build_tar_cmd "$DIR") | gpg2 --verify "\$SIG" - && rm "\$SIG")
 CMD
     do_snazzer_sig
     echo ""
@@ -169,7 +199,7 @@ measure() {
     cat <<HERE
 ################################################################################
 HERE
-    measure_du "$FAKE_DIR"
+    measure_du "$MEAS_DIR" "$FAKE_DIR"
     #measure_latest "$MEAS_DIR"
     # Sometimes, it's mildly faster to run sha512sum and gpg signing in parallel
     # especially on I/O starved VMs.
@@ -180,13 +210,18 @@ HERE
         TMP_DIR=$(mktemp -d)
         chmod 0700 "$TMP_DIR"
         TMP_FIFO=$(mktemp --tmpdir="$TMP_DIR" -u)
+        TMP_RC=$(mktemp --tmpdir="$TMP_DIR")
         mkfifo --mode=0700 "$TMP_FIFO"
         SHA512_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
         GPG_MEASUREMENT=$(mktemp --tmpdir="$TMP_DIR")
-        (do_tar "$MEAS_DIR") | tee "$TMP_FIFO" | \
+        ( do_tar "$MEAS_DIR" || echo "$?" > "$TMP_RC" && exit "$?" ) | \
+            tee "$TMP_FIFO" | \
             measure_sha512sum "$FAKE_DIR" > "$SHA512_MEASUREMENT" &
         sleep 1 # SMELLLLLL... avoid stupid race condition where it seems that
                 # measure_gpg starts before tee does
+        if [ -s "$TMP_RC" -a "$(cat "$TMP_RC")" != "0" ]; then
+            exit "$(cat "$TMP_RC")"
+        fi
         measure_gpg "$FAKE_DIR" < "$TMP_FIFO" > "$GPG_MEASUREMENT"
         # And if we put their respective output straight to stdout, we sometimes
         # get their output intermixedue
@@ -194,10 +229,11 @@ HERE
         cat "$GPG_MEASUREMENT"
         rm "$GPG_MEASUREMENT"
         rm "$SHA512_MEASUREMENT"
+        rm "$TMP_RC"
         rm "$TMP_FIFO"
         rmdir "$TMP_DIR"
     else
-        (do_tar "$MEAS_DIR") | measure_sha512sum "$FAKE_DIR"
+        do_tar "$MEAS_DIR" | measure_sha512sum "$FAKE_DIR"
     fi
     measure_tar_info
 }
@@ -233,12 +269,7 @@ if [ -z "$1" ]; then
     show_usage "No path specified"
     exit 2
 else
-    if [ ! -d "$1" ]; then
-        echo "ERROR: path '$1' is not a directory" >&2
-        exit 3
-    else
-        measure "$1" "$2"
-    fi
+    measure "$1" "$2"
 fi
 
 exit
@@ -330,6 +361,22 @@ time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 
 =back
 
+=head2 sudo requirements
+
+When running B<snazzer-measure> as a non-root user, certain commands will be
+prefixed with C<sudo>. The following lines in C</etc/sudoers> or
+C</etc/sudoers.d/snazzer> should suffice (replace C<measureuser> with the actual
+user name you are setting up for this task):
+
+    measureuser ALL=(root:nobody) NOPASSWD: \
+        /bin/cat */.snapshotz/*/.snapshot_measurements.exclude, \
+        /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
+        /usr/bin/find */.snapshotz/* \
+            -xdev -not -path /*/.snapshotz/* -printf ./%P\\\\0, \
+        /bin/tar --no-recursion --one-file-system --preserve-permissions --null\
+            --create --to-stdout --directory */.snapshotz/* --files-from * \
+            --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
+
 =head1 EXIT STATUS
 
 B<snazzer-measure> will abort with an error message printed to STDERR and
@@ -340,8 +387,6 @@ non-zero exit status under the following conditions:
 =item 1. Invalid argument
 
 =item 2. Path string not specified
-
-=item 3. Path string not a directory
 
 =item 4. GPG signature would have been generated with a secret keyfile stored
 in a subvolume which has not been excluded from default snazzer snapshots, see
