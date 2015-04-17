@@ -1,0 +1,350 @@
+#!/bin/sh -e
+set -e
+export PATH=/bin:/usr/bin:/sbin:/usr/local/bin
+
+log_cmd() {
+    logger -p user.info "$0 (for $SSH_CLIENT) running: $1" >&2
+}
+
+log_error_cmd() {
+    logger -p user.error "ERROR: $0 (for $SSH_CLIENT) refused to run: $1" >&2
+}
+
+# The mission: unpack an $SSH_ORIGINAL_COMMAND-like variable with an arbitrary
+# number arguments to our command of interest into "$@" so that we can call our
+# real command safely. In other words, instead of something like:
+#   foo $DANGEROUS_BAREWORD_STRING
+# we want to do instead:
+#   foo "$@"
+#
+# ASSUMPTION: All arguments are inside single-quoted strings using '\'' to
+# escape internal single quotes (and we interpolate '\'' -> ' for you). So
+# instead of:
+#   foo run --bar --cat=" someone's dog "
+# you must have:
+#   foo 'run' '--bar' '--cat=" someone'\\''s dog "'
+#
+# TESTING:
+# snazzer_list_snapshots "'--all=\" some stuff \"' 'hel'\\\\'' squot '\\\\''lo' 'asd \" dquot \" fgh' 'ap ple' ' bon'\\\\''squot'\\\\''jour' 'there'"
+# uncomment in do_snazzer: while [ -n "$1" ]; do echo "ARG: $1"; shift; done
+# output:
+#   ARG: --all=" some stuff "
+#   ARG: hel' squot 'lo
+#   ARG: asd " dquot " fgh
+#   ARG: ap ple
+#   ARG:  bon'squot'jour
+#   ARG: there
+#
+# SMELL: We haven't really thought through erroneous backslashes, but that will
+# only cause arg mangling, shouldn't result in any shell escape vuln as long as
+# the real command can handle it (!) and is called using "$@"
+snazzer_list_snapshots() {
+    ARGS=$1
+    ARGN=
+    PHASE=right
+
+    shift
+    if ! echo "$ARGS" | grep -q "^ *'.*' *$"; then
+        echo "ERROR: args must start and end with single-quotes" >&2
+        echo "$ARGS" >&2
+        exit 99
+    fi
+    # We parse from right-to-left, because we're (ab)using sed and it doesn't do
+    # non-hungry regex matching. It works by chopping the end off $ARGS
+    # progressively until there's nothing left. $ARGN accumulates the truncated
+    # bits for the right-most argument and is reset back to the empty string
+    # once it is done and pushed onto "$@". Am I mad? A real language'd be nice
+    while [ -n "$ARGS" ]
+    do
+        case "$PHASE" in
+            right)
+                ARGN="$(echo "$ARGS" | sed -n "s|^.*'\([^']*\)' *$|\1|p")$ARGN"
+                ARGS=$(echo "$ARGS"    | sed    "s|\([^']*\)' *$||")
+                # If truncation up to final ' is same as truncation up to '\'',
+                # need to split this argument so we can interpolate '\'' -> '
+                if [ "$(echo "$ARGS" | sed "s/^.*'//g")" = \
+                     "$(echo "$ARGS" | sed "s/^.*'\\\\''//g")" ]; then
+                    PHASE=split
+                # Otherwise this is a boring argument without any '\'' in it
+                elif echo "$ARGS" | grep -q "'$"; then
+                    PHASE=left
+                else
+                    echo "ERROR: This should never happen, stopped: $ARGS" >&2
+                    exit 99
+                fi
+                ;;
+            split)
+                L=$(echo "$ARGS" | sed -n "s|^\(.*\)'\\\\''\(.*\)$|\1|p")
+                R=$(echo "$ARGS" | sed -n "s|^\(.*\)'\\\\''\(.*\)$|\2|p")
+                # If there are no '\'' left at all in $ARGS, stop splitting
+                if [ -z "$L" -a -z "$R" ]; then
+                    PHASE=left
+                # If truncation up to final ' is the same as truncation up to
+                # '\'', we're still processing current ARGN, keep splitting
+                elif [ "$(echo "$L" | sed "s/^.*'//g")" = \
+                     "$(echo "$L" | sed "s/^.*'\\\\''//g")" ]
+                then
+                    ARGS="$L"
+                    ARGN="'$R${ARGN}"
+                # Otherwise, our right-most single-quote marks that we reached
+                # the beginning of the current ARGN, so stop splitting
+                else
+                    PHASE=left
+                    ARGS="$L"
+                    ARGN="'$R${ARGN}"
+                fi
+                ;;
+            left)
+                ARGN="$(echo "$ARGS" | sed -n "s|^.* *'\([^']*\)$|\1|p")$ARGN"
+                ARGS=$(echo "$ARGS"             | sed       "s| *'\([^']*\)$||")
+                set -- "$ARGN" "$@"
+                ARGN=
+                PHASE=right
+                ;;
+            *)
+                echo "ERROR: This should never happen, stopped: $ARGS" >&2
+                exit 99
+                ;;
+        esac
+    done
+    # while [ -n "$1" ]; do echo "ARG: $1" >&2; shift; done
+    log_cmd "sudo -n snazzer --list-snapshots \"$@\""
+    sudo -n snazzer --list-snapshots "$@"
+}
+
+run_cmd() {
+    CMD=$1
+    case "$CMD" in
+        "sudo -n snazzer --list-snapshots"*)
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n snazzer --list-snapshots ||g")"
+            snazzer_list_snapshots "$ARGS"
+            ;;
+        "sudo -n grep -srl '"*"'"*"'"*"/.snapshotz/.measurements/'")
+            # There's effectively two arbitrary arguments in our desired command, so
+            # we've chickened out of allowing internal single quotes in hostnames
+            HOST="$(echo "$CMD" | sed -n \
+                "s|^sudo -n grep -srl  *'\([^-'][^']*\)'  *'\([^-].*\)' *$|\1|p")"
+            DIR="$( echo "$CMD" | sed -n \
+                "s|^sudo -n grep -srl  *'\([^-'][^']*\)'  *'\([^-].*\)' *$|\2|p")"
+            if [ -n "$HOST" -a -n "$DIR" ]; then
+                log_cmd "sudo -n grep -srl \"$HOST\" \"$DIR\""
+                sudo -n grep -srl "$HOST" "$DIR"
+            else
+                log_error_cmd "$CMD"
+                exit 98
+            fi
+            ;;
+        "sudo -n btrfs send '"*"/.snapshotz/"*"' -p '"*"/.snapshotz/"*"'")
+            # There's effectively two arbitrary arguments in our desired command, so
+            # we've chickened out of allowing internal single quotes in paths
+            DIR="$(echo "$CMD" | sed -n \
+                "s|^sudo -n btrfs send '\([^-][^']*\.snapshotz/[^']*\)' -p '\([^-][^']*\.snapshotz/[^']*\)' *$|\1|p")"
+            PAR="$(echo "$CMD" | sed -n \
+                "s|^sudo -n btrfs send '\([^-][^']*\.snapshotz/[^']*\)' -p '\([^-][^']*\.snapshotz/[^']*\)' *$|\2|p")"
+            if [ -n "$DIR" -a -n "$PAR" ]; then
+                log_cmd "sudo -n btrfs send \"$DIR\" -p \"$PAR\""
+                sudo -n btrfs send "$DIR" -p "$PAR"
+            else
+                log_error_cmd "$CMD"
+                exit 98
+            fi
+            ;;
+        "sudo -n btrfs send '"*"/.snapshotz/"*"'")
+            DIR="$(echo "$CMD" | sed -n \
+                "s|^sudo -n btrfs send '\([^-].*\.snapshotz/.*\)' *$|\1|p")"
+            if [ -n "$DIR" ]; then
+                log_cmd "sudo -n btrfs send \"$DIR\""
+                sudo -n btrfs send "$DIR"
+            else
+                log_error_cmd "$CMD"
+                exit 98
+            fi
+            ;;
+        "sudo -n cat '"*"/.snapshotz/.measurements/"*"'")
+            FILE="$(echo "$CMD" | sed -n \
+                "s|^sudo -n cat '\([^-].*\.snapshotz/\.measurements/.*\)' *$|\1|p")"
+            if [ -n "$FILE" ]; then
+                log_cmd "sudo -n cat \"$FILE\""
+                sudo -n cat "$FILE"
+            else
+                log_error_cmd "$CMD"
+                exit 98
+            fi
+            ;;
+        *)
+            cat <<HERE >&2
+ERROR: Unrecognized command (are paths good, arguments single-quoted?):
+  $CMD
+HERE
+            exit 2
+    esac
+}
+
+case "$1" in
+    -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+         --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
+         --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+         --man-markdown )
+             cat <<HERE | perl -Mstrict
+if ( eval { require Pod::Markdown; 1; } ) {
+    Pod::Markdown->new->filter('$0');
+}
+else {
+    print STDERR "ERROR: --man-markdown requires Pod::Markdown\n\$@\n";
+    exit 9;
+}
+HERE
+             exit
+             ;;
+    "")
+            if [ -n "$SSH_ORIGINAL_COMMAND" ]; then
+                run_cmd "$SSH_ORIGINAL_COMMAND"
+            else
+                pod2usage -exit 1 "$0";
+                exit
+            fi
+            ;;
+    * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
+esac
+
+exit
+
+__END__
+=head1 NAME
+
+snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
+
+=head1 SYNOPSIS
+
+  SSH_ORIGINAL_COMMAND="sudo -n snazzer --list-snapshots '--all'" \
+    ./snazzer-send-wrapper
+
+  SSH_ORIGINAL_COMMAND="sudo -n grep \
+    'remotehost1' '/some/.snapshotz/.measurements/'" snazzer-send-wrapper
+
+  SSH_ORIGINAL_COMMAND="sudo -n btrfs send \
+    '/some/.snapshotz/2015-04-01T000000Z'" snazzer-send-wrapper
+
+  SSH_ORIGINAL_COMMAND="sudo -n cat \
+    '/some/.snapshotz/.measurements/2015-04-01T000000Z'" snazzer-send-wrapper
+
+=head1 OPTIONS
+
+=over
+
+=item B<--help>: Brief help message
+
+=item B<--man>: Full documentation
+
+=item B<--man-roff>: Full documentation as *roff output, Eg:
+
+    snazzer --man-roff | nroff -man
+
+=item B<--man-markdown>: Full documentation as markdown output, Eg:
+
+    snazzer --man-markdown > snazzer-manpage.md
+
+=back
+
+=head1 DESCRIPTION
+
+This is a wrapper script to be used in place of a real login shell in order to
+restrict the commands available to the B<snazzer-receive> user account which
+ultimately runs C<btrfs send>. It may be utilized by adding an entry in the
+C<~/.ssh/authorized_keys> file on a host C<remotehost1> under the user account
+which is accessed with B<snazzer-receive>. C<~/.ssh/authorized_keys>:
+
+    command="/usr/bin/snazzer-send-wrapper",no-port-forwarding, \
+        no-X11-forwarding,no-pty ssh-rsa AAAA...snip...== my key
+
+And then (as an example) receive btrfs snapshots from this C<remotehost1>:
+
+    snazzer-receive remotehost1 --all
+
+=head1 ENVIRONMENT
+
+=over
+
+=item * SSH_ORIGINAL_COMMAND
+
+This variable holds the original remote ssh command to be acted upon.
+
+=back
+
+=head1 BUGS AND LIMITATIONS
+
+=over
+
+=item * This script tries too hard to parse normal shell commands
+
+A better design would be custom command tokens issued with more easily parsed
+string and argument delimeters. This would require some changes to
+B<snazzer-receive>.
+
+A mitigating factor is that all real commands executed by this script are run
+like so:
+
+  foo "$@"
+
+Rather than any variant of the far more dangerous:
+
+  foo $BAREWORD_ARGUMENTS
+
+And so this should prevent shell escapes, assuming the command C<foo> can handle
+arbitrary arguments.
+
+Additionally, for commands other than C<snazzer --list-snapshots>, arguments in
+"$@" are checked for prefixes with "-" (these result in an error).
+
+=back
+
+=head1 EXIT STATUS
+
+B<snazzer-send-wrapper> will abort with an error message printed to STDERR and
+non-zero exit status under the following conditions:
+
+=over
+
+=item 2. the command string was not recognized
+
+=item 98. the command string was recognized but the arguments were not safe
+
+=item 99. the command string was recognized and an attempt was made to
+parse/re-pack the arguments however the argument string had dangling quotes or
+otherwise confused the parser/"$@" unpacker (C<snazzer --list-snapshots> only)
+
+=back
+
+=head1 SEE ALSO
+
+snazzer-receive
+
+=head1 AUTHOR
+
+Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+=cut

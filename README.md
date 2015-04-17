@@ -11,18 +11,20 @@ Getting started
 
 The full documentation for each part of snazzer is available as follows:
 
-    snazzer --man                     # Create, prune and measure snapshots
-    snazzer-receive --man             # Receive remote snapshots over ssh
+    snazzer --man                  # Create, prune and measure snapshots
+    snazzer-receive --man          # Receive remote snapshots over ssh
     
 Supporting scripts are also fully documented:
 
-    snazzer-measure --man             # Support script, used by snazzer
-    snazzer-prune-candidates --man    # Support script, used by snazzer[-receive]
+    snazzer-measure --man          # Support script, used by snazzer
+    snazzer-send-wrapper --man     # Support script, snazzer-receive ssh wrapper
+    snazzer-prune-candidates --man # Support script, used by snazzer[-receive]
     
 These man pages are also available at:
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-receive.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-measure.md
+* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-send-wrapper.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-prune-candidates.md
 
 ### Generate and mount a test btrfs filesystem image

@@ -95,7 +95,11 @@ list_remote_snapshot_measurements() {
             "$SUBVOL/.snapshotz/.measurements/" || true)
     else
         MEAS_LIST=$(do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
-            '$SUBVOL_ESC/.snapshotz/.measurements/' || true")
+            '$SUBVOL_ESC/.snapshotz/.measurements/'" || ( \
+            RC=$?
+            if [ "$RC" != "1" ]; then
+                exit "$RC"
+            fi))
     fi
     echo "$MEAS_LIST" | sed "s|^.*/||g"
 }
@@ -335,13 +339,13 @@ HERE
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
     NUM_COPY=0
     NUM_REMOTE=$(echo "$MEAS_REMOTE" | wc -l | cut -d ' ' -f 1)
-    while read SNAP_NAME
+    while read SNAP_NAME <&4
     do
         dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
         NUM_COPY=$(expr $NUM_COPY + 1)
-    done < "$MEAS_WANT"
+    done 4<"$MEAS_WANT"
     echo "$MEAS_REMOTE" > "$MEAS_WANT"
-    while read SNAP_NAME
+    while read SNAP_NAME <&4
     do
         if $SUDO test -e  "$SUBVOL_RELPATH/.snapshotz/$SNAP_NAME" && \
             ! $SUDO test -e \
@@ -349,7 +353,7 @@ HERE
             dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
             NUM_COPY=$(expr $NUM_COPY + 1)
         fi
-    done < "$MEAS_WANT"
+    done 4<"$MEAS_WANT"
     rm "$MEAS_WANT"
     echo " $NUM_COPY of $NUM_REMOTE."
 }
@@ -396,7 +400,7 @@ HERE
     NUM_PRUN=$(expr $NUM_SNAP - $NUM_WANT || true)
     NUM_RECV=0
     NUM_SKIP=0
-    while read SNAPSHOT
+    while read SNAPSHOT <&4
     do
         SNAP_RELPATH=$(echo "$SNAPSHOT" | sed 's|^/*||g')
         if $SUDO test -e "$SNAP_RELPATH"; then
@@ -412,7 +416,7 @@ HERE
             fi
         fi
         PREV_SNAP="$SNAPSHOT"
-    done < "$SNAP_WANT"
+    done 4<"$SNAP_WANT"
     rm "$SNAP_WANT"
     printf "  $NUM_RECV of $NUM_SNAP snapshots received "
     echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
@@ -433,14 +437,11 @@ do_host() {
     echo "$LIST" | \
         sed 's|^/*\(.*\)/\.snapshotz/.*|\1|g' | sort | uniq > "$LIST_OUT"
     NUM_SUBVOL=$(wc -l "$LIST_OUT" | cut -d ' ' -f 1)
-    # SMELL: We'd while read FOO ... done < "foo.txt", but can't nest them
-    I=0
-    while test "$I" -lt "$NUM_SUBVOL"; do
-        I=$(expr $I + 1)
-        SUBVOL=$(head -n $I "$LIST_OUT" | tail -n 1)
+    while read SUBVOL <&5
+    do
         do_subvolume "$HOST" "$SUBVOL"
         do_subvolume_measurements "$HOST" "$SUBVOL"
-    done
+    done 5<"$LIST_OUT"
     printf "Processed $NUM_SUBVOL subvolume(s)."
     if [ -s "$LIST_ERR" ]; then
         echo " Additional output from:"
