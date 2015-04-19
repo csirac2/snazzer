@@ -682,15 +682,16 @@ TODO: link to a guide on this
 
 =item * Disable interactive shells/logins
 
-Don't give the B<snazzer-receive> user the option of running arbitrary commands
-remotely. Set the shell to C</bin/false> or equivalent. Disable the password.
-NOTE: this doesn't stop ssh remote commands.
+Reduce opportunities for the B<snazzer-receive> user to run arbitrary commands;
+remove the account password. NOTE: this doesn't stop ssh remote commands.
 TODO: link to a guide on this
 
 =item * Log remote ssh commands
 
 Most distros do zero logging of remote ssh commands. Logging such commands may
-be your only way to spot abuse of the B<snazzer-receive> account.
+be your only way to spot abuse of the B<snazzer-receive> account. The
+C<snazzer-send-wrapper> uses C<logger -p user.info [cmd]> to log commands on
+remote hosts which are invoking C<btrfs send>.
 TODO: link to a guide on this
 
 =back
