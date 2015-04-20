@@ -723,17 +723,6 @@ else {
                 join( ', ', sort keys %{$expected} ),
                 "parse_line('$test')"
             );
-            require Data::Dumper;
-
-            print STDERR Data::Dumper->Dump(
-                [
-                    {
-                        expect => $expected,
-                        result => \%result,
-                        parse_line => \&parse_line,
-                    }
-                ]
-            );
             foreach my $part ( sort keys %{$expected} ) {
                 is( $result{$part}, $expected->{$part},
                     "parse_line('$test')\t$part" );
