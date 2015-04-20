@@ -16,6 +16,11 @@ if [ -z "$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" ]; then
     SNAZZER_MEASUREMENTS_EXCLUDE_FILE=".snapshot_measurements.exclude"
 fi
 
+# Keep in sync with the POD!
+if [ -z "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]; then
+    SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
+fi
+
 if [ "$(id -u)" = "0" ]; then
     SUDO=""
 else
@@ -162,13 +167,25 @@ CMD
     echo ""
 }
 
+glob2grep_file() {
+    FILE=$1
+    OUT=$(mktemp)
+
+    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' > "$OUT"
+
+    echo "$OUT"
+}
+
 assert_gpg_secring_excluded() {
     if [ "$(gpg2 --list-secret-keys | wc -l)" = "0" ]; then
         echo "ERROR: no gpg2 --list-secret-keys" >&2
         exit 10
     fi
+    EXCL_FILE=$( glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE" )
     N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
-        (xargs df -t btrfs 2>/dev/null && echo 1) | wc -l)
+        grep -v -f "$EXCL_FILE" | \
+        (xargs --no-run-if-empty df -t btrfs 2>/dev/null) | wc -l)
+    rm "$EXCL_FILE"
     #N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
     #    grep -v -f /etc/snazzer/exclude.patterns | wc -l)
     GPG_SECRING=$(gpg2 --list-secret-keys | head -n 1)
@@ -176,11 +193,11 @@ assert_gpg_secring_excluded() {
     if [ "$N" -ne 0 ] && ( [ -z "$MY_KEYFILES_ARE_INVINCIBLE" ] || \
         [ "$MY_KEYFILES_ARE_INVINCIBLE" -ne "1" ]); then
         show_usage "\
-$N gpg secret key(s) are included in the default snazzer shapshots, including
+gpg secret key(s) are included in the default snazzer shapshots, including
 (perhaps?) $GPG_SECRING!
 
 Move the private keyfiles you wish to use for measurement signing to a subvolume
-excluded in /etc/snazzer/exclude.patterns, and ensure that the gpg environment
+excluded in "$SNAZZER_SUBVOLS_EXCLUDE_FILE", and ensure that the gpg environment
 and config is set correctly. Stubbornly refusing to shoot self in foot; if you
 feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
         exit 4
@@ -358,6 +375,17 @@ default snazzer snapshots
 
 Use UTC times of the form C<YYYY-MM-DDTHHMMSSZ> instead of the default local
 time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
+
+=item * SNAZZER_SUBVOLS_EXCLUDE_FILE
+
+Filename of newline separated list of shell glob patterns of subvolume pathnames
+which should be excluded from C<snazzer --all> invocations; compatible with
+C<--exclude-from> for B<du> and B<tar>.  Examples of subvolume patterns to
+exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/btrfs,
+.snapshots.  B<NOTE:> C<.snapshotz> is always excluded.
+Default:
+
+  SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
 
 =back
 
