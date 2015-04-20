@@ -580,8 +580,8 @@ passwordless sudo for the commands it needs to run. Only a few commands are
 necessary, the following lines in C</etc/sudoers> or C</etc/sudoers.d/snazzer>
 should suffice (replace "sendinguser" with the actual username you will use):
 
-    sendinguser ALL=(root:nobody) NOPASSWD: \
-        /usr/bin/snazzer --list-snapshots *, \
+    sendinguser ALL=(root:nobody) NOPASSWD: /usr/bin/snazzer --list-snapshots *
+    sendinguser ALL=(root:nobody) NOPASSWD:NOEXEC: \
         /bin/grep -srl */.snapshotz/.measurements/, \
         /sbin/btrfs send */.snapshotz/*, \
         /bin/cat */.snapshotz/.measurements/*
