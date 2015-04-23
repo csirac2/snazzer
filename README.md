@@ -102,7 +102,7 @@ Some observations:
   existed under it at the time of the snapshot in a file named
   `.snapshot_measurments.exclude`. This is to work around a btrfs bug which
   means certain empty directories within snapshots have bogus atimes, see
-  https://bugzilla.kernel.org/buglist.cgi?quicksearch=btrfs%20atime&list_id=527771
+  https://bugzilla.kernel.org/show_bug.cgi?id=95201
 
 ### Receive snapshots from a remote system
 
