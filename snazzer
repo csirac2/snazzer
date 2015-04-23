@@ -130,10 +130,10 @@ get_subvol_path() {
 }
 
 # List the excluded subvols relative to DIR
-list_excluded_subvols() {
+list_subvols() {
     DIR=$1
     SUBVOL_PATH_ESC=$(get_subvol_path "$DIR" | sed -e 's/[]$*.^|[]/\\&/g')
-    $SUDO btrfs subvolume list -o "$DIR" | grep -v '\.snapshotz' | \
+    $SUDO btrfs subvolume list -o "$DIR" | \
         sed -n "s|.*path $SUBVOL_PATH_ESC[/]*\\(.*\\)|\\1|p"
 }
 
@@ -186,10 +186,7 @@ dry_snapshot() {
     # The cat | tee below, is in case we're leaning on sudo...
     cat <<CMD
     cat <<EXCL | $SUDO tee "$EXCL_FILE_ESC" >/dev/null
-.snapshotz
-.snapshotz/*
-$SNAZZER_MEASUREMENTS_EXCLUDE_FILE
-$( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
+$( list_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
     $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
     $SUDO rm '$EXCL_FILE_ESC'
@@ -207,10 +204,7 @@ do_snapshot() {
 
     # The cat | tee below, is in case we're leaning on sudo...
     cat <<EXCL | $SUDO tee "$EXCL_FILE" >/dev/null
-.snapshotz
-.snapshotz/*
-$SNAZZER_MEASUREMENTS_EXCLUDE_FILE
-$( list_excluded_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
+$( list_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
     $SUDO btrfs subvolume snapshot -r "$SUBVOL" "$SNAP_DIR"
     $SUDO rm "$EXCL_FILE"
