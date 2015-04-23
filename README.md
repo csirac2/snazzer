@@ -6,6 +6,24 @@ and pruning.
 
 * `snazzer-prune-candidates`: [![Build Status](https://secure.travis-ci.org/csirac2/snazzer.png)](https://travis-ci.org/csirac2/snazzer)
 
+Features
+--------
+
+* Minimal dependencies (portable-ish sh script - a painful learning
+exercise...)
+* Maintains snapshots for each subvol under
+  `subvol/.snapshotz/YYYY-MM-DDTHHMMSS+hhmm` i.e. a valid isodate
+* Operates on specific subvols, all subvols on a filesystem, or all
+  subvols on all mounted filesystems, Eg: `snazzer --all`
+* Operations include snapshotting (default), `--measure` (sha512sum &
+  PGP signatures of snapshots), `--prune` (deleting snapshots except for
+  those required to meet configured number of
+  hourlies/daylies/monthlies/yearlies to keep)
+* `snazzer-receive` operates on remote hosts for specific subvols, all
+  subvols on a filesystem, or all subvols on all mounted filesystems,
+  Eg: `snazzer-receive somehost --all` (or `snazzer-receive -- --all` to
+  receive local paths without ssh in the middle)
+  
 Getting started
 ---------------
 
