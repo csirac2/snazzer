@@ -603,13 +603,18 @@ an interactive/shell user):
       /sbin/btrfs subvolume show *, \
       /bin/ls */.snapshotz, \
       /bin/grep -srL */.snapshotz/.measurements/, \
+      /bin/mkdir --mode=0755 */.snapshotz, \
+      /bin/mkdir --mode=0755 */.snapshotz/.measurements, \
       /bin/mkdir --mode=0755 */.snapshotz/.incomplete, \
       /sbin/btrfs receive */.snapshotz/.incomplete, \
+      /sbin/btrfs subvolume create *, \
       /sbin/btrfs subvolume snapshot -r */.snapshotz/.incomplete/* */.snapshotz/,\
       /sbin/btrfs subvolume delete */.snapshotz/.incomplete/*, \
       /bin/rmdir */.snapshotz/.incomplete, \
-      /bin/mkdir -vp --mode=0755 */.snapshotz/.measurements, \
+      /bin/mkdir -vp *, \
+      /bin/mkdir --mode=0755 -vp */.snapshotz, \
       /usr/bin/tee -a */.snapshotz/.measurements/*
+
 
 =head1 SECURITY CONSIDERATIONS
 

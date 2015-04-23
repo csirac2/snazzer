@@ -61,8 +61,8 @@ passwordless sudo for the commands it needs to run. Only a few commands are
 necessary, the following lines in `/etc/sudoers` or `/etc/sudoers.d/snazzer`
 should suffice (replace "sendinguser" with the actual username you will use):
 
-    sendinguser ALL=(root:nobody) NOPASSWD: \
-        /usr/bin/snazzer --list-snapshots *, \
+    sendinguser ALL=(root:nobody) NOPASSWD: /usr/bin/snazzer --list-snapshots *
+    sendinguser ALL=(root:nobody) NOPASSWD:NOEXEC: \
         /bin/grep -srl */.snapshotz/.measurements/, \
         /sbin/btrfs send */.snapshotz/*, \
         /bin/cat */.snapshotz/.measurements/*
@@ -79,17 +79,21 @@ A dedicated non-root user will require at minimum the following lines in
 actual username your cron job will use, and remove `NOPASSWD:` if this is for
 an interactive/shell user):
 
-    receiveruser ALL=(root:nobody) NOPASSWD: \
+    receiveruser ALL=(root:nobody) NOPASSWD:NOEXEC: \
       /usr/bin/test -e */.snapshotz*, \
       /sbin/btrfs subvolume show *, \
       /bin/ls */.snapshotz, \
       /bin/grep -srL */.snapshotz/.measurements/, \
+      /bin/mkdir --mode=0755 */.snapshotz, \
+      /bin/mkdir --mode=0755 */.snapshotz/.measurements, \
       /bin/mkdir --mode=0755 */.snapshotz/.incomplete, \
       /sbin/btrfs receive */.snapshotz/.incomplete, \
+      /sbin/btrfs subvolume create *, \
       /sbin/btrfs subvolume snapshot -r */.snapshotz/.incomplete/* */.snapshotz/,\
       /sbin/btrfs subvolume delete */.snapshotz/.incomplete/*, \
       /bin/rmdir */.snapshotz/.incomplete, \
-      /bin/mkdir -vp --mode=0755 */.snapshotz/.measurements, \
+      /bin/mkdir -vp *, \
+      /bin/mkdir --mode=0755 -vp */.snapshotz, \
       /usr/bin/tee -a */.snapshotz/.measurements/*
 
 # SECURITY CONSIDERATIONS
@@ -157,15 +161,16 @@ has gained control of the **snazzer-receive** user accounts or ssh keys:
 
 - Disable interactive shells/logins
 
-    Don't give the **snazzer-receive** user the option of running arbitrary commands
-    remotely. Set the shell to `/bin/false` or equivalent. Disable the password.
-    NOTE: this doesn't stop ssh remote commands.
+    Reduce opportunities for the **snazzer-receive** user to run arbitrary commands;
+    remove the account password. NOTE: this doesn't stop ssh remote commands.
     TODO: link to a guide on this
 
 - Log remote ssh commands
 
     Most distros do zero logging of remote ssh commands. Logging such commands may
-    be your only way to spot abuse of the **snazzer-receive** account.
+    be your only way to spot abuse of the **snazzer-receive** account. The
+    `snazzer-send-wrapper` uses `logger -p user.info [cmd]` to log commands on
+    remote hosts which are invoking `btrfs send`.
     TODO: link to a guide on this
 
 # BUGS AND LIMITATIONS
