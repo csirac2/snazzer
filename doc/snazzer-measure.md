@@ -66,20 +66,32 @@ The output includes:
     Use UTC times of the form `YYYY-MM-DDTHHMMSSZ` instead of the default local
     time+offset `YYYY-MM-DDTHHMMSS+hhmm`
 
+- SNAZZER\_SUBVOLS\_EXCLUDE\_FILE
+
+    Filename of newline separated list of shell glob patterns of subvolume pathnames
+    which should be excluded from `snazzer --all` invocations; compatible with
+    `--exclude-from` for **du** and **tar**.  Examples of subvolume patterns to
+    exclude from regular snapshotting: \*secret\*, /var/cache, /var/lib/docker/btrfs,
+    .snapshots.  **NOTE:** `.snapshotz` is always excluded.
+    Default:
+
+        SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
+
 ## sudo requirements
 
 When running **snazzer-measure** as a non-root user, certain commands will be
 prefixed with `sudo`. The following lines in `/etc/sudoers` or
-`/etc/sudoers.d/snazzer` should suffice (replace `measureuser` with the actual
-user name you are setting up for this task):
+`/etc/sudoers.d/snazzer` should suffice for scripted jobs such as cron (replace
+`measureuser` with the actual user name you are setting up for this task):
 
-    measureuser ALL=(root:nobody) NOPASSWD: \
+    measureuser ALL=(root:nobody) NOPASSWD:NOEXEC: \
         /bin/cat */.snapshotz/*/.snapshot_measurements.exclude, \
         /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
         /usr/bin/find */.snapshotz/* \
-            -xdev -not -path /*/.snapshotz/* -printf ./%P\\\\0, \
-        /bin/tar --no-recursion --one-file-system --preserve-permissions --null\
-            --create --to-stdout --directory */.snapshotz/* --files-from * \
+            -xdev -not -path /*/.snapshotz/* -printf %P\\\\0, \
+        /bin/tar --no-recursion --one-file-system --preserve-permissions \
+            --numeric-owner --null --create --to-stdout \
+            --directory */.snapshotz/* --files-from * \
             --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
 
 # EXIT STATUS

@@ -80,10 +80,10 @@ Here's an example measurement result found at  `/mnt/home/.snapshotz/.measuremen
     512098  /mnt/home/.snapshotz/2015-04-16T115421+1000
     
     > on host1 at 2015-04-16T155828+1000, sha512sum:
-    (find '../2015-04-16T115421+1000' -xdev -not -path '../2015-04-16T115421+1000' -printf './%P\0' | LC_ALL=C sort -z | tar --no-recursion --one-file-system --preserve-permissions --null --create --to-stdout --directory '../2015-04-16T115421+1000' --files-from - --exclude-from '../2015-04-16T115421+1000/.snapshot_measurements.exclude' | sha512sum -b)
+    (find '../2015-04-16T115421+1000' -xdev -not -path '../2015-04-16T115421+1000' -printf './%P\0' | LC_ALL=C sort -z | tar --no-recursion --one-file-system --preserve-permissions --numeric-owner --null --create --to-stdout --directory '../2015-04-16T115421+1000' --files-from - --exclude-from '../2015-04-16T115421+1000/.snapshot_measurements.exclude' | sha512sum -b)
     c5626e1e6036d317ac98e5ed185b9c5520e4eba67becd250fc1b6fc94574cbc483b9ca677b1f69e8691d0ad4cb17c9b07f0084271b8e11e95915fadb6ced473c *-
     > on host1 at 2015-04-16T155829+1000, gpg:
-    (SIG=$(mktemp) && grep -v '/,/' '2015-04-16T115421+1000' | sed -n '/> on host1 at 2015-04-16T155829+1000, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' >"$SIG" && find '../2015-04-16T115421+1000' -xdev -not -path '../2015-04-16T115421+1000' -printf './%P\0' | LC_ALL=C sort -z | tar --no-recursion --one-file-system --preserve-permissions --null --create --to-stdout --directory '../2015-04-16T115421+1000' --files-from - --exclude-from '../2015-04-16T115421+1000/.snapshot_measurements.exclude' | gpg2 --verify "$SIG" - && rm "$SIG")
+    (SIG=$(mktemp) && grep -v '/,/' '2015-04-16T115421+1000' | sed -n '/> on host1 at 2015-04-16T155829+1000, gpg:/,/-----END PGP SIGNATURE-----/ { /-----BEGIN PGP SIGNATURE-----/{x;d}; H }; ${x;p}' >"$SIG" && find '../2015-04-16T115421+1000' -xdev -not -path '../2015-04-16T115421+1000' -printf './%P\0' | LC_ALL=C sort -z | tar --no-recursion --one-file-system --preserve-permissions --numeric-owner --null --create --to-stdout --directory '../2015-04-16T115421+1000' --files-from - --exclude-from '../2015-04-16T115421+1000/.snapshot_measurements.exclude' | gpg2 --verify "$SIG" - && rm "$SIG")
     -----BEGIN PGP SIGNATURE-----
     Version: GnuPG v2
     <snip!>

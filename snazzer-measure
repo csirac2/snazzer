@@ -1,7 +1,7 @@
 #!/bin/sh
 
 set -e
-SNAZZER_VERSION=0.4
+SNAZZER_VERSION=0.5
 
 # Keep in sync with the POD!
 default_snazzer_sig_func() {
@@ -52,10 +52,10 @@ build_tar_cmd() {
     DIR_ESC=$(echo "$1" | sed "s|'|'\\\\''|g")
 
     cat <<CMD
-find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -printf './%P\0' | \
+find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -printf '%P\0' | \
 LC_ALL=C sort -z | \
 tar --no-recursion --one-file-system --preserve-permissions \
---null --create --to-stdout \
+--numeric-owner --null --create --to-stdout \
 --directory '$DIR_ESC' \
 --files-from - \
 --exclude-from '$DIR_ESC/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE'
@@ -69,10 +69,10 @@ do_tar() {
 
     chmod 0700 "$LIST_TMP"
     # Keep tar/find out of the pipe in case they have errors
-    $SUDO find "$DIR" -xdev -not -path "$DIR" -printf './%P\0' >"$LIST_TMP" && \
+    $SUDO find "$DIR" -xdev -not -path "$DIR" -printf '%P\0' >"$LIST_TMP" && \
         LC_ALL=C sort -z "$LIST_TMP" > "$SORT_TMP" && \
         $SUDO tar --no-recursion --one-file-system --preserve-permissions \
-            --null --create --to-stdout \
+            --numeric-owner --null --create --to-stdout \
             --directory "$DIR" \
             --files-from "$SORT_TMP" \
             --exclude-from "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" && \
@@ -125,7 +125,7 @@ dry_find() {
     EXCL=$(build_find_excl_switch "$1")
     cat <<CMD
 find '$DIR_ESC' -xdev -not -path '$DIR_ESC' -path '/tmp' -prune -o $EXCL -type f \
-    -printf "%T@ './%P'\\\0" | sort -n | tail -1 | cut -f2- -d" " | \
+    -printf "%T@ '%P'\\\0" | sort -n | tail -1 | cut -f2- -d" " | \
     xargs -0 ls -la --time-style="+%Y-%m-%dT%H%M%S%z"
 CMD
 }
@@ -400,9 +400,10 @@ C<measureuser> with the actual user name you are setting up for this task):
         /bin/cat */.snapshotz/*/.snapshot_measurements.exclude, \
         /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
         /usr/bin/find */.snapshotz/* \
-            -xdev -not -path /*/.snapshotz/* -printf ./%P\\\\0, \
-        /bin/tar --no-recursion --one-file-system --preserve-permissions --null\
-            --create --to-stdout --directory */.snapshotz/* --files-from * \
+            -xdev -not -path /*/.snapshotz/* -printf %P\\\\0, \
+        /bin/tar --no-recursion --one-file-system --preserve-permissions \
+            --numeric-owner --null --create --to-stdout \
+            --directory */.snapshotz/* --files-from * \
             --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
 
 =head1 EXIT STATUS

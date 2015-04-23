@@ -3,6 +3,6 @@ measureuser ALL=(root:nobody) NOPASSWD:NOEXEC: \
     /usr/bin/du -bs --one-file-system --exclude-from * */.snapshotz/*, \
     /usr/bin/find */.snapshotz/* \
         -xdev -not -path /*/.snapshotz/* -printf ./%P\\\\0, \
-    /bin/tar --no-recursion --one-file-system --preserve-permissions --null\
-        --create --to-stdout --directory */.snapshotz/* --files-from * \
-        --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
+    /bin/tar --no-recursion --one-file-system --preserve-permissions \
+        --numeric-owner --null --create --to-stdout --directory */.snapshotz/* \
+        --files-from * --exclude-from */.snapshotz/*/.snapshot_measurements.exclude
