@@ -115,7 +115,7 @@ list_btrfs_mountpoints() {
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     df -t btrfs 2>/dev/null | tail -n+2 | awk '{ print $1 }' | sort | uniq | \
         while read DEV; do df --output=target "$DEV" | tail -n+2 ; done | \
-        grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE"
+        grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE" || true
     rm "$EXCL_FILE"
 }
 
@@ -288,8 +288,8 @@ prune() {
     assert_subvolume "$SUBVOL"
     assert_exists "$SUBVOL_SHOTZ"
     PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
-    NUM_PRUNE=$(echo "$PRUNE_LIST" | grep -c . )
-    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep -c . )
+    NUM_PRUNE=$(echo "$PRUNE_LIST" | grep -c . || true)
+    NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep -c . || true )
     echo "$SUBVOL_SHOTZ: pruning $NUM_PRUNE of $NUM_AVAIL"
     if [ "$DRY_RUN" != "1" -a "$DO_FORCE" != "1" ]; then
         echo "ERROR: --prune expected --force or --dry-run" >&2
@@ -301,7 +301,7 @@ prune() {
                 dry_prune "$PRUNE_LIST"
             else
                 do_prune "$PRUNE_LIST" | \
-                    grep -v 'Transaction commit: none (default)'
+                    grep -v 'Transaction commit: none (default)' || true
             fi
         fi
     fi
@@ -395,8 +395,8 @@ measure() {
         SNAP_LIST=$(echo "$SNAP_LIST"; echo "$SNAP_MISSING")
     fi
     # grep . so we don't count final newline
-    NUM_MEAS=$( echo "$SNAP_LIST" | grep -c . )
-    NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep -c . )
+    NUM_MEAS=$( echo "$SNAP_LIST" | grep -c . || true )
+    NUM_AVAIL=$( echo "$SNAP_LIST_AVAIL" | grep -c . || true )
     echo "$SUBVOL: measuring $NUM_MEAS of $NUM_AVAIL"
     if [ -n "$SNAP_LIST" ]; then
         if [ "$DRY_RUN" = "1" ]; then
@@ -508,7 +508,7 @@ DO_FORCE=0
 DRY_RUN=0
 DO_ALL=0
 
-while [ "$(echo "$1" | grep -c "^-")" != 0 ]
+while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
 do
     case "$1" in
         -h | --help ) pod2usage -exit 0 "$0"; exit ;;
