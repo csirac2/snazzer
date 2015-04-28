@@ -709,11 +709,6 @@ else {
     sub test_parse_line {
         plan tests => 83;
         my %_parse_tests = gen_parse_test_data();
-        require B::Deparse;
-        my $deparse = B::Deparse->new;
-        print STDERR "\n\n===========\nparse_line: " .
-            $deparse->coderef2text(\&parse_line) .
-            "\n===========\n\n";
         foreach my $test ( sort keys %_parse_tests ) {
             my $expected = $_parse_tests{$test};
             my %result   = parse_line($test);
