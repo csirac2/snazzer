@@ -10,6 +10,13 @@ log_error_cmd() {
     logger -p user.error "ERROR: $0 (for $SSH_CLIENT) refused to run: $1" >&2
 }
 
+squote_args() {
+    while [ -n "$1" ]; do
+        printf "'"; printf '%s' "$1" | sed "s|'|'\\\\''|g"; printf "' "
+        shift
+    done
+}
+
 # The mission: unpack an $SSH_ORIGINAL_COMMAND-like variable with an arbitrary
 # number arguments to our command of interest into "$@" so that we can call our
 # real command safely. In other words, instead of something like:
@@ -108,7 +115,7 @@ snazzer_list_snapshots() {
         esac
     done
     # while [ -n "$1" ]; do echo "ARG: $1" >&2; shift; done
-    log_cmd "sudo -n snazzer --list-snapshots \"$@\""
+    log_cmd "sudo -n snazzer --list-snapshots $(squote_args "$@")"
     sudo -n snazzer --list-snapshots "$@"
 }
 
@@ -183,7 +190,7 @@ HERE
 case "$1" in
     -h | --help ) pod2usage -exit 0 "$0"; exit ;;
          --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
-         --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
+         --man-roff ) pod2man --release="$SNAZZER_VERSION" "$0"; exit ;;
          --man-markdown )
              cat <<HERE | perl -Mstrict
 if ( eval { require Pod::Markdown; 1; } ) {
