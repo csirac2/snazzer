@@ -395,7 +395,7 @@ HERE
     echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
     NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
-    NUM_PRUN=$((NUM_SNAP - $NUM_WANT))
+    NUM_PRUN=$((NUM_SNAP - NUM_WANT))
     NUM_RECV=0
     NUM_SKIP=0
     while read SNAPSHOT <&4
