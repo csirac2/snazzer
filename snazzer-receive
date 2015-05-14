@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 SNAZZER_VERSION=0.3
-SNAZZER_SUBVOLS_EXCLUDE_FILE_TMP=0
 SNAZZER_SNAPSHOTZ_PERMS=0755
 
 if [ "$(id -u)" = "0" ]; then
@@ -226,8 +225,8 @@ CMD2
     ssh "$HOST" "sudo -n \$CMD" >"\$MEAS_TMP"
 CMD3
     fi)
-    cat "\$MEAS_TMP" | $SUDO tee -a \
-        "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
+    $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
+        <"\$MEAS_TMP" >/dev/null
     rm "\$MEAS_TMP"
 CMD
 }
@@ -254,8 +253,8 @@ do_copy() {
         do_ssh "$HOST" "sudo -n $CMD" >"$MEAS_TMP"
     fi
     # Don't forget to copy the lines below verbatim into dry_copy() between CMD
-    cat "$MEAS_TMP" | $SUDO tee -a \
-        "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" >/dev/null
+    $SUDO tee -a "$SUBVOL_LOCALPATH/.snapshotz/.measurements/$SNAP_NAME" \
+        <"$MEAS_TMP" >/dev/null
     rm "$MEAS_TMP"
 }
 
@@ -332,8 +331,8 @@ HERE
     # 3. Write the union of these two lists (duplicates only) as a list of the
     #    snapshot names which we should grab remote $HOST's measurements of
     cat <<HERE | sort | uniq -d > "$MEAS_WANT"
-$(echo "$MEAS_ABSENT")
-$(echo "$MEAS_REMOTE")
+$MEAS_ABSENT
+$MEAS_REMOTE
 HERE
     NUM_WANT=$(wc -l "$MEAS_WANT" | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
@@ -342,7 +341,7 @@ HERE
     while read SNAP_NAME <&4
     do
         dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
-        NUM_COPY=$(expr $NUM_COPY + 1)
+        NUM_COPY=$(("$NUM_COPY" + 1))
     done 4<"$MEAS_WANT"
     echo "$MEAS_REMOTE" > "$MEAS_WANT"
     while read SNAP_NAME <&4
@@ -351,7 +350,7 @@ HERE
             ! $SUDO test -e \
             "$SUBVOL_RELPATH/.snapshotz/.measurements/$SNAP_NAME"; then
             dispatch_copy "$HOST" "/$SUBVOL_RELPATH" "$SUBVOL_RELPATH" "$SNAP_NAME"
-            NUM_COPY=$(expr $NUM_COPY + 1)
+            NUM_COPY=$(("$NUM_COPY" + 1))
         fi
     done 4<"$MEAS_WANT"
     rm "$MEAS_WANT"
@@ -396,17 +395,16 @@ HERE
     echo "$SNAPSHOTS" | snazzer-prune-candidates --invert > "$SNAP_WANT"
     NUM_WANT=$(wc -l "$SNAP_WANT" | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
-    # SMELL: that expr errors when the answer is zero, is why sh scripting sucks
-    NUM_PRUN=$(expr $NUM_SNAP - $NUM_WANT || true)
+    NUM_PRUN=$(( $NUM_SNAP - $NUM_WANT ))
     NUM_RECV=0
     NUM_SKIP=0
     while read SNAPSHOT <&4
     do
         SNAP_RELPATH=$(echo "$SNAPSHOT" | sed 's|^/*||g')
         if $SUDO test -e "$SNAP_RELPATH"; then
-            NUM_SKIP=$(expr $NUM_SKIP + 1)
+            NUM_SKIP=$(( $NUM_SKIP + 1))
         else
-            NUM_RECV=$(expr $NUM_RECV + 1)
+            NUM_RECV=$(( $NUM_RECV + 1))
             if [ "$DRY_RUN" != "0" ]; then
                 dry_send \
                     "$HOST" "$SNAPSHOT" "$PREV_SNAP"
@@ -418,7 +416,7 @@ HERE
         PREV_SNAP="$SNAPSHOT"
     done 4<"$SNAP_WANT"
     rm "$SNAP_WANT"
-    printf "  $NUM_RECV of $NUM_SNAP snapshots received "
+    printf " %s of %s snapshots received " "$NUM_RECV" "$NUM_SNAP"
     echo "($NUM_PRUN pruned, $NUM_WANT considered, $NUM_SKIP skipped)"
 }
 
@@ -442,7 +440,7 @@ do_host() {
         do_subvolume "$HOST" "$SUBVOL"
         do_subvolume_measurements "$HOST" "$SUBVOL"
     done 5<"$LIST_OUT"
-    printf "Processed $NUM_SUBVOL subvolume(s)."
+    printf "Processed %s subvolume(s)." "$NUM_SUBVOL"
     if [ -s "$LIST_ERR" ]; then
         echo " Additional output from:"
         printf "  "
