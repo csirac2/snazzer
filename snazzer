@@ -356,7 +356,7 @@ do_measure() {
     # Avoid putting this in a pipe in case snazzer-measure aborts with error.
     # Also, using a tempfile avoids writing partial measurements to the report.
     snazzer-measure "$SUBVOL" "$FAKEPATH" > "$REPORT_TMP"
-    cat "$REPORT_TMP" | $SUDO tee -a "$REPORT" >/dev/null
+    $SUDO tee -a "$REPORT" <"$REPORT_TMP" >/dev/null
     rm "$REPORT_TMP"
 }
 
