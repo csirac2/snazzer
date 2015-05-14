@@ -116,7 +116,7 @@ build_find_excl_switch() {
 
     sed "s/'/'\\\\''/g" "$EXCL_FILE" | while read RULE
     do
-        printf " -path '*$RULE' -prune -o"
+        printf " -path '*%s' -prune -o" "$RULE"
     done
 }
 
@@ -192,14 +192,15 @@ assert_gpg_secring_excluded() {
 
     if [ "$N" -ne 0 ] && ( [ -z "$MY_KEYFILES_ARE_INVINCIBLE" ] || \
         [ "$MY_KEYFILES_ARE_INVINCIBLE" -ne "1" ]); then
-        show_usage "\
+        show_usage <<HERE
 gpg secret key(s) are included in the default snazzer shapshots, including
 (perhaps?) $GPG_SECRING!
 
 Move the private keyfiles you wish to use for measurement signing to a subvolume
 excluded in "$SNAZZER_SUBVOLS_EXCLUDE_FILE", and ensure that the gpg environment
 and config is set correctly. Stubbornly refusing to shoot self in foot; if you
-feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1."
+feel this is in error, try again with MY_KEYFILES_ARE_INVINCIBLE=1.
+HERE
         exit 4
     fi
 }
