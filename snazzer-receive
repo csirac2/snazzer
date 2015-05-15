@@ -323,17 +323,21 @@ HERE
     SNAPSHOTS=$($SUDO ls "$SUBVOL_RELPATH/.snapshotz")
     MEAS_WANT=$(mktemp)
     MEAS_ABSENT=$($SUDO grep -srL "^> on $HOST at " \
-        "$SUBVOL_RELPATH/.snapshotz/.measurements/" | sed "s|^.*/||g")
+        "$SUBVOL_RELPATH/.snapshotz/.measurements/" | \
+        sed -n 's|^.*/\([^/]*\)|\1|p')
     MEAS_REMOTE=$(list_remote_snapshot_measurements "$HOST" "/$SUBVOL_RELPATH")
     # 1. Print snapshot measurements that we have locally but are missing
     #    mentions of remote $HOST;
     # 2. Print snapshot measurements available on the remote $HOST
     # 3. Write the union of these two lists (duplicates only) as a list of the
     #    snapshot names which we should grab remote $HOST's measurements of
-    cat <<HERE | sort | uniq -d > "$MEAS_WANT"
-$MEAS_ABSENT
-$MEAS_REMOTE
-HERE
+    if [ -n "$MEAS_ABSENT" -a -n "$MEAS_REMOTE" ]; then
+        printf "%s\n%s" "$MEAS_ABSENT" "$MEAS_REMOTE" | sort | uniq -d \
+            > "$MEAS_WANT"
+    else
+        printf "%s%s" "$MEAS_ABSENT" "$MEAS_REMOTE" | sort | uniq -d \
+            > "$MEAS_WANT"
+    fi
     NUM_WANT=$(wc -l "$MEAS_WANT" | cut -d ' ' -f 1)
     NUM_SNAP=$(echo "$SNAPSHOTS" | wc -l | cut -d ' ' -f 1)
     NUM_COPY=0
@@ -424,6 +428,12 @@ HERE
 #FIXME: Subvols containing mixed timezone snapshots will use suboptimal parents
 do_host() {
     HOST=$1
+    if [ "$LOCAL_RUN" = "1" ]; then
+        HOST=$(hostname)
+    elif [ "$HOST" = "--" ]; then
+        echo "ERROR: This should never happen" >&2
+        exit 127
+    fi
     NUM_SUBVOL=0
     LIST_ERR=$(mktemp)
     LIST_OUT=$(mktemp)
