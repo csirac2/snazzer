@@ -344,7 +344,8 @@ dry_measure() {
     FAKEPATH_ESC=$(echo "$3" | sed "s/'/'\\\\''/g")
 
     cat <<HERE
-snazzer-measure '$SUBVOL_ESC' '$FAKEPATH_ESC' >> '$REPORT_ESC';
+SNAZZER_SUBVOLS_EXCLUDE_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE" \
+    snazzer-measure '$SUBVOL_ESC' '$FAKEPATH_ESC' >> '$REPORT_ESC';
 HERE
 }
 
@@ -355,7 +356,8 @@ do_measure() {
     REPORT_TMP=$(mktemp)
     # Avoid putting this in a pipe in case snazzer-measure aborts with error.
     # Also, using a tempfile avoids writing partial measurements to the report.
-    snazzer-measure "$SUBVOL" "$FAKEPATH" > "$REPORT_TMP"
+    SNAZZER_SUBVOLS_EXCLUDE_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE" \
+        snazzer-measure "$SUBVOL" "$FAKEPATH" > "$REPORT_TMP"
     $SUDO tee -a "$REPORT" <"$REPORT_TMP" >/dev/null
     rm "$REPORT_TMP"
 }
