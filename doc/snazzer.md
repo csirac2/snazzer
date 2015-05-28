@@ -100,13 +100,6 @@ snapshots already measured by current hostname
     If the actual datetime of the snapshot event is important to you, this is
     available from the `btrfs subvolume show` command.
 
-- BTRFS subvolume path name assumption
-
-    An assumption has been made that a subvolume will mounted under the same path
-    (relative to mountpoint) as its path name indicated by `btrfs subvolume list`.
-    If you have manually mounted subvolumes under mountpoints inconsistent with this
-    assumption, breakage will occur.
-
 - SNAZZER\_SUBVOLS\_EXCLUDE\_FILE is used with grep -f
 
     A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob

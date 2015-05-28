@@ -735,13 +735,6 @@ identifying which snapshots were part of a given snapshotting run is possible.
 If the actual datetime of the snapshot event is important to you, this is
 available from the C<btrfs subvolume show> command.
 
-=item * BTRFS subvolume path name assumption
-
-An assumption has been made that a subvolume will mounted under the same path
-(relative to mountpoint) as its path name indicated by C<btrfs subvolume list>.
-If you have manually mounted subvolumes under mountpoints inconsistent with this
-assumption, breakage will occur.
-
 =item * SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -f
 
 A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
