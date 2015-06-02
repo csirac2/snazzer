@@ -3,14 +3,6 @@
 
 load "$BATS_TEST_DIRNAME/fixtures.sh"
 
-su_do() {
-    if [ "$(id -u)" = "0" ]; then
-        "$@"
-    else
-        sudo "$@"
-    fi
-}
-
 setup_run >/dev/null 2>/dev/null
 
 emit_snazzer_list_subvolumes_expected() {
