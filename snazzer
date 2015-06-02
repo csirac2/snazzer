@@ -574,8 +574,8 @@ do_mountpoints() {
         done
     fi
     if [ -s "$TMP_EXCL" ]; then
-        echo ""
-        cat "$TMP_EXCL"
+        echo "" >&2
+        cat "$TMP_EXCL" >&2
     fi
     if [ -s "$TMP_DIRS" ]; then
         echo ""
