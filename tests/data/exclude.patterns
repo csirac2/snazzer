@@ -1,0 +1,5 @@
+var/cache
+var/lib/docker
+.snapshots
+*backup*
+*secret*
