@@ -26,9 +26,6 @@ setup_run_img_populate() {
     while read SUBVOL; do
         SUBVOL_PARENT=$(dirname "$SUBVOL")
         SUBVOL_NAME=$(basename "$SUBVOL")
-        echo "SUBVOL: $SUBVOL" >> /tmp/food
-        echo "SUBVOL_NAME: $SUBVOL_NAME" >> /tmp/food
-        echo "SUBVOL_PARENT: $SUBVOL_PARENT" >> /tmp/food
         su_do mkdir -p "$MNT/$SUBVOL_PARENT"
         su_do btrfs subvolume create "$MNT/$SUBVOL"
         test_img_write "$MNT/$SUBVOL/${SUBVOL_NAME}_junk" 500K
