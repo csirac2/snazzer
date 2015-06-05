@@ -4,7 +4,10 @@ SNAZZER_VERSION=0.2
 SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 
-if [ "$SNAZZER_USE_UTC" = "1" ]; then
+# For testing
+if [ -n "$SNAZZER_DATE" ]; then
+    SNAZZER_DATE=$SNAZZER_DATE
+elif [ "$SNAZZER_USE_UTC" = "1" ]; then
     SNAZZER_DATE=$(date -u +"%Y-%m-%dT%H%M%SZ")
 else
     SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
