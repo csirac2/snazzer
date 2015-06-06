@@ -79,6 +79,8 @@ glob2grep_file() {
     echo "$OUT"
 }
 
+# This should only operate on a real mount(8) filesystem mountpoint, so call
+# assert_mountpoint before calling list_subvolumes.
 list_subvolumes() {
     DIR=$1
     DO_INVERT=$2
@@ -87,7 +89,6 @@ list_subvolumes() {
     else
         GREP="grep -v"
     fi
-    assert_mountpoint "$DIR"
     if [ "$DIR" != "/" ]; then
             DIR="$DIR/"
     fi
@@ -101,6 +102,7 @@ list_subvolumes() {
 
 report_subvols_excluded() {
     DIR=$1
+    assert_mountpoint "$DIR"
     NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
 
     if [ "$NUM" != "0" ]; then
@@ -554,6 +556,7 @@ do_mountpoint() {
     do_multiple "$DO_ACTION" "$MOUNTPOINT"
     report_subvols_excluded "$MOUNTPOINT" >> "$TMP_EXCL"
     report_snapshot_dirs "$MOUNTPOINT" >> "$TMP_DIRS"
+    assert_mountpoint "$MOUNTPOINT"
     list_subvolumes "$MOUNTPOINT" | {
         while read SUBVOL; do
             do_multiple "$DO_ACTION" "$SUBVOL"
