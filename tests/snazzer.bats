@@ -68,7 +68,6 @@ HERE
 @test "snazzer --list-snapshots [/subvol1] [/subvol2] [/subvol3]" {
     run snazzer --list-snapshots "$MNT/home" "$MNT/srv" "$MNT/var/cache"
     [ "$status" = "0" ]
-    echo "$output" > /tmp/out
     [ "$(expected_list_snapshots_output | \
         grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" |sort)" = "$output" ]
     
