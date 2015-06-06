@@ -59,6 +59,21 @@ HERE
     [ "$status" = "2" ]
 }
 
+@test "snazzer --list-snapshots [/subvol1]" {
+    run snazzer --list-snapshots "$MNT/home"
+    [ "$status" = "0" ]
+    [ "$output" = "$(expected_list_snapshots_output | grep "^$MNT/home")" ]
+}
+
+@test "snazzer --list-snapshots [/subvol1] [/subvol2] [/subvol3]" {
+    run snazzer --list-snapshots "$MNT/home" "$MNT/srv" "$MNT/var/cache"
+    [ "$status" = "0" ]
+    echo "$output" > /tmp/out
+    [ "$(expected_list_snapshots_output | \
+        grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" |sort)" = "$output" ]
+    
+}
+
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
     if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
