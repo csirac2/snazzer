@@ -7,15 +7,9 @@ su_do() {
     fi
 }
 
-test_img_write() {
-    FILE=$1
-    SIZE=$2
-    su_do dd if=/dev/urandom of="$FILE" bs="$SIZE" count="1"
-}
-
 gen_subvol_list() {
-    for SUBVOL in srv 'srv/s p a c e' home etc/secrets var/lib/docker/btrfs \
-        var/cache 'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?';
+    for SUBVOL in srv 'srv/s p a c e' home var/cache var/lib/docker/btrfs \
+        'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?';
     do echo "$SUBVOL"; done
 }
 
@@ -23,25 +17,26 @@ setup_run_img_populate() {
     MNT=$1
     shift
     if [ "$MNT" = "/" ]; then MNT=""; fi
+    su_do chown "$USER" "$MNT"
     while read SUBVOL; do
         SUBVOL_PARENT=$(dirname "$SUBVOL")
         SUBVOL_NAME=$(basename "$SUBVOL")
-        su_do mkdir -p "$MNT/$SUBVOL_PARENT"
+        mkdir -p "$MNT/$SUBVOL_PARENT"
         su_do btrfs subvolume create "$MNT/$SUBVOL"
-        test_img_write "$MNT/$SUBVOL/${SUBVOL_NAME}_junk" 500K
+        su_do chown "$USER" "$MNT/$SUBVOL"
+        touch "$MNT/$SUBVOL/${SUBVOL_NAME}_junk"
         if [ "$SUBVOL_PARENT" = "." ]; then
-            test_img_write "$MNT/${SUBVOL_NAME}_junk" 500K
+            touch "$MNT/${SUBVOL_NAME}_junk"
         else
-            test_img_write "$MNT/${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
+            touch "$MNT/${SUBVOL_PARENT}_${SUBVOL_NAME}_junk"
         fi
     done
 }
 
-setup_run() {
+setup_mnt() {
     IMG="$BATS_TMPDIR/btrfs.img"
     MNT="$BATS_TMPDIR/mnt"
-    export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
-    if ! df -T "$MNT" | grep "$MNT\$"; then
+    if ! df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
         su_do mkdir "$MNT"
         truncate -s 80M "$IMG"
         su_do mkfs.btrfs "$IMG"
@@ -50,7 +45,9 @@ setup_run() {
     fi
 }
 
-teardown_run() {
+teardown_mnt() {
+    IMG="$BATS_TMPDIR/btrfs.img"
+    MNT="$BATS_TMPDIR/mnt"
     su_do umount "$MNT"
     rm "$IMG"
     su_do rmdir "$MNT"
