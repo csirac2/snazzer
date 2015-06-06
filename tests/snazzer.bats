@@ -2,11 +2,11 @@
 # vi:syntax=sh
 
 load "$BATS_TEST_DIRNAME/fixtures.sh"
-SNAPS_FILE=$(mktemp)
 
 setup() {
     export MNT=$BATS_TMPDIR/mnt
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
+    export SNAPS_TEST_FILE=$(mktemp)
     [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
     if mountpoint -q "$MNT"; then
         teardown_mnt
@@ -74,8 +74,8 @@ setup_snapshots() {
         while read DATE <&6; do
             su_do btrfs subvolume snapshot -r "$SUBVOL" \
                 "$SUBVOL/.snapshotz/$DATE" >/dev/null
-            if [ -n "$SNAPS_FILE" ]; then
-                echo "$SUBVOL/.snapshotz/$DATE" >>"$SNAPS_FILE"
+            if [ -n "$SNAPS_TEST_FILE" ]; then
+                echo "$SUBVOL/.snapshotz/$DATE" >>"$SNAPS_TEST_FILE"
             fi
         done 6<"$TMP_DATES"
     done
@@ -85,7 +85,7 @@ setup_snapshots() {
 
 expected_list_snapshots_output() {
     NUM_EXCL=2
-    cat "$SNAPS_FILE"
+    cat "$SNAPS_TEST_FILE"
     cat <<HERE
 
 $NUM_EXCL subvolumes excluded in $MNT by ${SNAZZER_SUBVOLS_EXCLUDE_FILE}.
@@ -101,6 +101,6 @@ HERE
 
 #trap 'teardown_mnt >/dev/null 2>/dev/null' EXIT
 teardown() {
-    rm "$SNAPS_FILE"
+    rm "$SNAPS_TEST_FILE"
     teardown_mnt >/dev/null 2>/dev/null
 }
