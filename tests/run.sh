@@ -35,6 +35,7 @@ setup() {
 
     case "$TEST" in
         *snazzer.bats)
+            export SNAZZER_SUBVOLS_EXCLUDE_FILE=$(pwd)/data/exclude.patterns
             ;;
         *snazzer-list.bats)
             export KEEP_FIXTURES=1
@@ -60,7 +61,7 @@ init
 EXIT=0
 if [ -n "$1" ]; then
     setup "$1"
-    bats "$1" || EXIT=$?
+    bats "$@" || EXIT=$?
     teardown "$1"
 else
     for TEST in *.bats; do

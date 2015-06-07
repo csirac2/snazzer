@@ -36,6 +36,7 @@ var/lib/docker
 *backup*
 *secret*
 HERE
+    if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
     cat <<HERE >&2
 WARN: $MISSING_SUBVOLS_EXCL_FILE missing, defaulting to $SNAZZER_SUBVOLS_EXCLUDE_FILE:
 HERE
@@ -106,6 +107,7 @@ report_subvols_excluded() {
     NUM=$(list_subvolumes "$DIR" --excluded | wc -l)
 
     if [ "$NUM" != "0" ]; then
+        if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
         echo "$NUM subvolumes excluded in $DIR by $SNAZZER_SUBVOLS_EXCLUDE_FILE."
     fi
 }
@@ -170,6 +172,7 @@ report_snapshot_dirs() {
         for DIR in "/tmp" "/var/tmp" "/var/cache" "/var/log"; do
             DIR_MNT=$(df --output=target "$DIR" | tail -n+2)
             if [ "$DIR_MNT" = "$SUBVOL_MNT" ]; then
+                if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
                 cat <<HERE
 WARN: snapshot of $SUBVOL includes $DIR directory, is this what you wanted?
 HERE
@@ -190,7 +193,7 @@ dry_snapshot() {
 
     # The cat | tee below, is in case we're leaning on sudo...
     cat <<CMD
-    cat <<EXCL | $SUDO tee "$EXCL_FILE_ESC" >/dev/null
+    cat <<EXCL | $SUDO tee '$EXCL_FILE_ESC' >/dev/null
 $( list_subvols "$SUBVOL" | sed -e 's|[`$]|\\&|g')
 EXCL
     $SUDO btrfs subvolume snapshot -r '$SUBVOL_ESC' '$SNAP_DIR_ESC'
@@ -326,6 +329,7 @@ measure_lock() {
             echo "  $SNAZZER_MEAS_LOCK_DIR/pid is $OLD_PID" >&2
             exit 7
         else
+            if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
             cat <<HERE >&2
 WARN: Previous snazzer --measure invocation PID $OLD_PID exited ungracefully;
 $SNAZZER_MEAS_LOCK_DIR/pid stale

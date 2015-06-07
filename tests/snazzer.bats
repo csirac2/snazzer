@@ -46,6 +46,14 @@ expected_snapshots_raw() {
     [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
 }
 
+@test "snazzer --dry-run --all [mountpoint]" {
+    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+    run snazzer --dry-run --all "$MNT"
+    [ "$status" = "0" ]
+    eval "$output"
+    [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
+}
+
 @test "snazzer [subvol]" {
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer "$MNT/home"
