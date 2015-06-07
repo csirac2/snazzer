@@ -35,6 +35,7 @@ setup() {
 
     case "$TEST" in
         *snazzer.bats)
+            export KEEP_FIXTURES=0
             export SNAZZER_SUBVOLS_EXCLUDE_FILE=$(pwd)/data/exclude.patterns
             ;;
         *snazzer-list.bats)
