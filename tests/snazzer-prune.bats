@@ -56,18 +56,6 @@ $SNAP"; else THIS=$SNAP; fi
     done
 }
 
-expected_snapshots() {
-    expected_list_subvolumes | while read SUBVOL; do
-        echo "$SUBVOL/.snapshotz/$SNAZZER_DATE"
-    done
-}
-
-expected_snapshots_raw() {
-    gen_subvol_list | sed "s|^|$MNT/|g" | while read SUBVOL; do
-        echo "$SUBVOL/.snapshotz/$SNAZZER_DATE"
-    done
-}
-
 @test  "snazzer --prune --all [mountpoint]" {
     run snazzer --prune --all "$MNT"
     [ "$status" = "5" ]
