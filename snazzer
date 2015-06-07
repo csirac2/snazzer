@@ -298,6 +298,7 @@ prune() {
     PRUNE_LIST=$(prune_shotz_dirs "$SUBVOL_SHOTZ")
     NUM_PRUNE=$(echo "$PRUNE_LIST" | grep -c . || true)
     NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep -c . || true )
+    if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
     echo "$SUBVOL_SHOTZ: pruning $NUM_PRUNE of $NUM_AVAIL"
     if [ "$DRY_RUN" != "1" -a "$DO_FORCE" != "1" ]; then
         echo "ERROR: --prune expected --force or --dry-run" >&2
