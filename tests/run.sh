@@ -10,6 +10,7 @@ init() {
 
 # setup/teardown is crazy slow, so let's just do it once for a given suite..
 setup_snazzer() {
+    printf "Running fixture group setup for %s..." "$TEST"
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$(pwd)/data/exclude.patterns
     [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ] || \
         echo "$SNAZZER_SUBVOLS_EXCLUDE_FILE missing"
@@ -19,35 +20,38 @@ setup_snazzer() {
     fi
     setup_mnt >/dev/null 2>>/dev/null
     if [ "$SETUP_SNAPSHOTS" = "1" ]; then setup_snapshots; fi
+    echo " done."
 }
 
 teardown_snazzer() {
+    printf "Running fixture group teardown for %s..." "$TEST"
     rm "$SNAPS_TEST_FILE"
     teardown_mnt >/dev/null 2>/dev/null
+    echo " done."
 }
 
 setup() {
     TEST=$1
 
-    printf "Running fixture group setup for %s..." "$TEST"
     case "$TEST" in
-        *snazzer.bats) setup_snazzer ;;
-        *snazzer-list.bats) SETUP_SNAPSHOTS=1 setup_snazzer ;;
+        *snazzer.bats)
+            ;;
+        *snazzer-list.bats)
+            export KEEP_FIXTURES=1
+            SETUP_SNAPSHOTS=1 setup_snazzer
+            ;;
         *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
-    echo " done."
 }
 
 teardown() {
     TEST=$1
 
-    printf "Running fixture group teardown for %s..." "$TEST"
     case "$TEST" in
         *snazzer.bats) teardown_snazzer ;;
         *snazzer-list.bats) teardown_snazzer ;;
         *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
-    echo " done."
 }
 
 init

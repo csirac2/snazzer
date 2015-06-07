@@ -10,7 +10,8 @@ export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
-    if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
+    [ -n "$MNT" ]
+    if [ "$KEEP_FIXTURES" != "1" ]; then
         SNAPS_TEST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
         if mountpoint -q "$MNT"; then
@@ -31,6 +32,13 @@ expected_snapshots() {
     done
 }
 
+expected_snapshots_raw() {
+    [ -n "$SNAZZER_DATE" ]
+    gen_subvol_list | sed "s|^|$MNT/|g" | while read SUBVOL; do
+        echo "$SUBVOL/.snapshotz/$SNAZZER_DATE"
+    done
+}
+
 @test "snazzer --all [mountpoint]" {
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer --all "$MNT"
@@ -38,18 +46,25 @@ expected_snapshots() {
     [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
 }
 
-expected_list_snapshots_output() {
-    NUM_EXCL=2
-    cat "$SNAPS_TEST_FILE"
-    cat <<HERE
+@test "snazzer [subvol]" {
+    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+    run snazzer "$MNT/home"
+    [ "$status" = "0" ]
+    [ "$(expected_snapshots_raw | grep "^$MNT/home")" = "$(gather_snapshots | sort)" ]
+}
 
-$NUM_EXCL subvolumes excluded in $MNT by ${SNAZZER_SUBVOLS_EXCLUDE_FILE}.
-HERE
+@test "snazzer [subvol1] [subvol2] [subvol3]" {
+    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+    run snazzer "$MNT/home" "$MNT/srv" "$MNT/var/cache"
+    [ "$status" = "0" ]
+    [ "$(expected_snapshots_raw | \
+        grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" | sort)" = \
+        "$(gather_snapshots | sort)" ]
 }
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
-    if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
+    if [ "$KEEP_FIXTURES" != "1" ]; then
         rm "$SNAPS_TEST_FILE"
         teardown_mnt >/dev/null 2>/dev/null
     fi
