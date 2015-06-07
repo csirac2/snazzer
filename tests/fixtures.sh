@@ -1,8 +1,5 @@
 #!/bin/sh
 
-if [ -z "$IMG" ]; then IMG=$BATS_TMPDIR/btrfs.img; fi
-if [ -z "$MNT" ]; then MNT=$BATS_TMPDIR/mnt; fi
-
 su_do() {
     if [ "$(id -u)" = "0" ]; then
         "$@"
@@ -38,6 +35,8 @@ setup_run_img_populate() {
 }
 
 setup_mnt() {
+    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
+    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
     if ! df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
         su_do mkdir -p "$MNT"
         truncate -s 80M "$IMG"
