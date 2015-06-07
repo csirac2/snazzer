@@ -38,6 +38,10 @@ setup() {
             export KEEP_FIXTURES=0
             export SNAZZER_SUBVOLS_EXCLUDE_FILE=$(pwd)/data/exclude.patterns
             ;;
+        *snazzer-prune.bats)
+            export KEEP_FIXTURES=0
+            export SNAZZER_SUBVOLS_EXCLUDE_FILE=$(pwd)/data/exclude.patterns
+            ;;
         *snazzer-list.bats)
             export KEEP_FIXTURES=1
             SETUP_SNAPSHOTS=1 setup_snazzer
@@ -51,6 +55,7 @@ teardown() {
 
     case "$TEST" in
         *snazzer.bats) teardown_snazzer ;;
+        *snazzer-prune.bats) teardown_snazzer ;;
         *snazzer-list.bats) teardown_snazzer ;;
         *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
