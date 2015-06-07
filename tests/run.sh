@@ -18,7 +18,7 @@ setup_snazzer() {
         teardown_mnt
     fi
     setup_mnt >/dev/null 2>>/dev/null
-    setup_snapshots
+    if [ "$SETUP_SNAPSHOTS" = "1" ]; then setup_snapshots; fi
 }
 
 teardown_snazzer() {
@@ -31,7 +31,9 @@ setup() {
 
     printf "Running fixture group setup for %s..." "$TEST"
     case "$TEST" in
-        snazzer.bats) setup_snazzer
+        *snazzer.bats) setup_snazzer ;;
+        *snazzer-list.bats) SETUP_SNAPSHOTS=1 setup_snazzer ;;
+        *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
     echo " done."
 }
@@ -39,9 +41,11 @@ setup() {
 teardown() {
     TEST=$1
 
-    printf "Running fixture group tear-down for %s..." "$TEST"
+    printf "Running fixture group teardown for %s..." "$TEST"
     case "$TEST" in
-        snazzer.bats) teardown_snazzer
+        *snazzer.bats) teardown_snazzer ;;
+        *snazzer-list.bats) teardown_snazzer ;;
+        *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
     echo " done."
 }
