@@ -10,6 +10,8 @@ export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
+    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
+
     [ -n "$MNT" ]
     if [ "$KEEP_FIXTURES" != "1" ]; then
         SNAPS_TEST_FILE=$(mktemp)
@@ -40,14 +42,12 @@ expected_snapshots_raw() {
 }
 
 @test "snazzer --all [mountpoint]" {
-    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer --all "$MNT"
     [ "$status" = "0" ]
     [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer --dry-run --all [mountpoint]" {
-    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer --dry-run --all "$MNT"
     [ "$status" = "0" ]
     eval "$output"
@@ -55,14 +55,12 @@ expected_snapshots_raw() {
 }
 
 @test "snazzer [subvol]" {
-    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer "$MNT/home"
     [ "$status" = "0" ]
     [ "$(expected_snapshots_raw | grep "^$MNT/home")" = "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer [subvol1] [subvol2] [subvol3]" {
-    export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     run snazzer "$MNT/home" "$MNT/srv" "$MNT/var/cache"
     [ "$status" = "0" ]
     [ "$(expected_snapshots_raw | \
