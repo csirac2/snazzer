@@ -14,9 +14,9 @@ gen_subvol_list() {
     do echo "$SUBVOL"; done
 }
 
-setup_run_img_populate() {
-    [ -n "$MNT" ]
+populate_mnt() {
     local MNT="$1"
+    [ -n "$MNT" ]
     shift
     if [ "$MNT" = "/" ]; then MNT=""; fi
     su_do chown "$USER" "$MNT"
@@ -35,22 +35,63 @@ setup_run_img_populate() {
     done
 }
 
-setup_mnt() {
-    [ -n "$MNT" ]
-    [ -n "$IMG" ]
-    if ! df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
-        su_do mkdir -p "$MNT"
-        truncate -s 80M "$IMG"
-        su_do mkfs.btrfs "$IMG"
-        su_do mount "$IMG" "$MNT"
-        gen_subvol_list | setup_run_img_populate "$MNT"
+create_img() {
+    local IMG="$1"
+    local TMPDIR="${BATS_TMPDIR:-/tmp}"
+    TMPDIR=$TMPDIR/snazzer-tests
+    local MNT=$TMPDIR/btrfs.working.mnt
+    [ -n "$MNT" -a -n "$IMG" ]
+    mkdir -p "$MNT"
+    if df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
+        umount "$MNT"
     fi
+    truncate -s 80M "$IMG"
+    su_do mkfs.btrfs "$IMG"
+    su_do mount "$IMG" "$MNT"
+    gen_subvol_list | populate_mnt "$MNT"
+    if [ "$DO_SNAPSHOTS" = "1" ]; then
+        snapshot_mnt "$MNT" >/dev/null 2>/dev/null;
+    fi
+    su_do umount "$MNT"
+}
+
+_prepare_mnt() {
+    local TMPDIR="${BATS_TMPDIR:-/tmp}"
+    TMPDIR=$TMPDIR/snazzer-tests
+    if [ "$DO_SNAPSHOTS" = "1" ]; then
+        local NAME=btrfs
+    else
+        local NAME=btrfs-snapshots
+    fi
+    local MNT="$TMPDIR/${NAME}.working.mnt"
+    local WRK="$TMPDIR/${NAME}.working.img"
+    local IMG="$TMPDIR/${NAME}.img"
+    teardown_mnt "$MNT"
+    mkdir -p "$MNT"
+    if [ ! -e "$IMG" ]; then
+        create_img "$IMG" >/dev/null 2>/dev/null
+    fi
+    cp "$IMG" "$WRK"
+    mkdir -p "$MNT"
+    su_do mount "$WRK" "$MNT"
+    echo "$MNT"
+}
+
+prepare_mnt() {
+    DO_SNAPSHOTS=0 _prepare_mnt "$@"
+}
+
+prepare_mnt_snapshots() {
+    DO_SNAPSHOTS=1 _prepare_mnt "$@"
 }
 
 teardown_mnt() {
+    local MNT="$1"
+    local IMG=$(mount |sed -n "s|^\\(.*\\) on $MNT.*|\1|p")
     [ -n "$MNT" ]
     if mountpoint -q "$MNT" 2>/dev/null; then
         su_do umount "$MNT"
+        rmdir "$MNT"
     fi
     rm -f "$IMG"
 }
@@ -85,21 +126,23 @@ HERE
 }
 
 expected_list_subvolumes() {
-    [ -n "$MNT" ]
+    local MNT="$1"
+    [ -n "$MNT" -a -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
     echo "$MNT"
-    gen_subvol_list | sed "s|^|$MNT/|g" | \
-        grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
+    gen_subvol_list | grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | sed "s|^|$MNT/|g"
 }
 
-setup_snapshots() {
+snapshot_mnt() {
+    local MNT="$1"
+    [ -n "$MNT" ]
     local TMP_DATES="$(mktemp)"
     gen_snapshot_dates >"$TMP_DATES"
 
-    expected_list_subvolumes | while read SUBVOL; do
+    expected_list_subvolumes "$MNT" | while read SUBVOL; do
         mkdir -p "$SUBVOL/.snapshotz"
         while read DATE <&6; do
             su_do btrfs subvolume snapshot -r "$SUBVOL" \
-                "$SUBVOL/.snapshotz/$DATE" >/dev/null
+                "$SUBVOL/.snapshotz/$DATE" >/dev/null 2>/dev/null
             if [ -n "$SNAP_LIST_FILE" ]; then
                 echo "$SUBVOL/.snapshotz/$DATE" >>"$SNAP_LIST_FILE"
             fi

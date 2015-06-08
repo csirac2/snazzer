@@ -6,21 +6,13 @@
 
 load "$BATS_TEST_DIRNAME/fixtures.sh"
 
-export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
+    export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
-
-    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
-    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
-    if [ "$KEEP_FIXTURES" != "1" ]; then
-        [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
-        if mountpoint -q "$MNT"; then
-            teardown_mnt
-        fi
-        setup_mnt >/dev/null 2>>/dev/null
-    fi
+    export MNT=$(prepare_mnt)
+    [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
 }
 
 gather_snapshots() {
@@ -28,14 +20,13 @@ gather_snapshots() {
 }
 
 expected_snapshots() {
-    [ -n "$SNAZZER_DATE" ]
-    expected_list_subvolumes | while read SUBVOL; do
-        echo "$SUBVOL/.snapshotz/$SNAZZER_DATE"
-    done
+    [ -n "$MNT" -a -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
+    expected_list_subvolumes "$MNT" | sed "s|$|/.snapshotz/$SNAZZER_DATE|g"
 }
 
 expected_snapshots_raw() {
     [ -n "$SNAZZER_DATE" ]
+    echo "$MNT/.snapshotz/$SNAZZER_DATE"
     gen_subvol_list | sed "s|^|$MNT/|g" | while read SUBVOL; do
         echo "$SUBVOL/.snapshotz/$SNAZZER_DATE"
     done
@@ -50,14 +41,15 @@ expected_snapshots_raw() {
 @test "snazzer --dry-run --all [mountpoint]" {
     run snazzer --dry-run --all "$MNT"
     [ "$status" = "0" ]
-    eval "$output"
+    eval "$output" >/dev/null 2>/dev/null
     [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer [subvol]" {
     run snazzer "$MNT/home"
     [ "$status" = "0" ]
-    [ "$(expected_snapshots_raw | grep "^$MNT/home")" = "$(gather_snapshots | sort)" ]
+    [ "$(expected_snapshots_raw | grep "^$MNT/home")" = \
+        "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer [subvol1] [subvol2] [subvol3]" {
@@ -70,9 +62,7 @@ expected_snapshots_raw() {
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
-    if [ "$KEEP_FIXTURES" != "1" ]; then
-        teardown_mnt >/dev/null 2>/dev/null
-    fi
+    teardown_mnt "$MNT" >/dev/null 2>/dev/null
 }
 
 #trap '_teardown' EXIT

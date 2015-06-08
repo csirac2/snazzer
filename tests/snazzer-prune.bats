@@ -11,17 +11,8 @@ load "$BATS_TEST_DIRNAME/fixtures.sh"
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
-    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
-    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
-
-    if [ "$KEEP_FIXTURES" != "1" ]; then
-        [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
-        if mountpoint -q "$MNT"; then
-            teardown_mnt
-        fi
-        setup_mnt >/dev/null 2>>/dev/null
-        setup_snapshots
-    fi
+    export MNT=$(prepare_mnt_snapshots)
+    [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
 }
 
 gather_snapshots() {
@@ -69,7 +60,6 @@ $SNAP"; else THIS=$SNAP; fi
 }
 
 @test  "snazzer --prune --all --dry-run [mountpoint]" {
-    find "$MNT" > /tmp/find
     BEFORE=$(gather_snapshots | sort)
     run snazzer --prune --all --dry-run "$MNT"
     [ "$status" = "0" ]
@@ -81,7 +71,6 @@ $SNAP"; else THIS=$SNAP; fi
     BEFORE=$(gather_snapshots | sort | grep "^$MNT/home/\.snapshotz")
     run snazzer --prune --force "$MNT/home"
     [ "$status" = "0" ]
-    echo "$BEFORE" > /tmp/in4
     [ "$(echo "$BEFORE" | snazzer-prune-candidates --invert)" = \
         "$(gather_snapshots | sort | grep "^$MNT/home/\.snapshotz")" ]
 }
@@ -96,9 +85,7 @@ $SNAP"; else THIS=$SNAP; fi
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
-    if [ "$KEEP_FIXTURES" != "1" ]; then
-        teardown_mnt >/dev/null 2>/dev/null
-    fi
+    teardown_mnt "$MNT" >/dev/null 2>/dev/null
 }
 
 #trap '_teardown' EXIT

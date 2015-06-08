@@ -6,27 +6,21 @@
 
 load "$BATS_TEST_DIRNAME/fixtures.sh"
 
-export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
-    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
-    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
-    if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
-        SNAP_LIST_FILE=$(mktemp)
-        [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
-        if mountpoint -q "$MNT"; then
-            teardown_mnt
-        fi
-        setup_mnt >/dev/null 2>>/dev/null
-        setup_snapshots
-    fi
+    export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
+    local TMPDIR="${BATS_TMPDIR:-/tmp}"
+    TMPDIR=$TMPDIR/snazzer-tests
+    export SNAP_LIST_FILE=$TMPDIR/btrfs-snapshots.list
+    export MNT=$(SNAP_LIST_FILE=$SNAP_LIST_FILE prepare_mnt_snapshots)
+    [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
 }
 
 expected_list_subvolumes_output() {
     NUM_EXCL=2
 
-    expected_list_subvolumes
+    expected_list_subvolumes "$MNT"
     cat <<HERE
 
 $NUM_EXCL subvolumes excluded in $MNT by ${SNAZZER_SUBVOLS_EXCLUDE_FILE}.
@@ -50,8 +44,6 @@ HERE
 
 @test "snazzer --list-snapshots --all [mountpoint]" {
     run snazzer --list-snapshots --all "$MNT"
-    echo "$output" >/tmp/out
-    expected_list_snapshots_output >/tmp/exp
     [ "$status" = "0" ]
     [ "$output" = "$(expected_list_snapshots_output)" ]
 }
@@ -77,10 +69,7 @@ HERE
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
-    if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
-        rm "$SNAP_LIST_FILE"
-        teardown_mnt >/dev/null 2>/dev/null
-    fi
+    teardown_mnt "$MNT" >/dev/null 2>/dev/null
 }
 
 #trap '_teardown' EXIT
