@@ -12,7 +12,8 @@ export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 setup() {
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
 
-    [ -n "$MNT" ]
+    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
+    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
     if [ "$KEEP_FIXTURES" != "1" ]; then
         SNAPS_TEST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]

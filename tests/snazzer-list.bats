@@ -10,7 +10,8 @@ export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
 
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
-    [ -n "$MNT" ]
+    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
+    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
     if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
         SNAPS_TEST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]

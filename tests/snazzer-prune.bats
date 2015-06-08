@@ -11,8 +11,9 @@ load "$BATS_TEST_DIRNAME/fixtures.sh"
 # setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
+    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
+    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
 
-    [ -n "$MNT" ]
     if [ "$KEEP_FIXTURES" != "1" ]; then
         SNAPS_TEST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]

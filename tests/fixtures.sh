@@ -15,6 +15,7 @@ gen_subvol_list() {
 }
 
 setup_run_img_populate() {
+    [ -n "$MNT" ]
     local MNT="$1"
     shift
     if [ "$MNT" = "/" ]; then MNT=""; fi
@@ -35,8 +36,8 @@ setup_run_img_populate() {
 }
 
 setup_mnt() {
-    if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
-    if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
+    [ -n "$MNT" ]
+    [ -n "$IMG" ]
     if ! df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
         su_do mkdir -p "$MNT"
         truncate -s 80M "$IMG"
@@ -47,6 +48,7 @@ setup_mnt() {
 }
 
 teardown_mnt() {
+    [ -n "$MNT" ]
     if mountpoint -q "$MNT" 2>/dev/null; then
         su_do umount "$MNT"
     fi
@@ -83,6 +85,7 @@ HERE
 }
 
 expected_list_subvolumes() {
+    [ -n "$MNT" ]
     echo "$MNT"
     gen_subvol_list | sed "s|^|$MNT/|g" | \
         grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
