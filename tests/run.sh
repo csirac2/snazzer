@@ -4,7 +4,6 @@ set -e
 init() {
     export MNT=/tmp/snazzer-tests/mnt
     export IMG=/tmp/snazzer-tests/btrfs.img
-    export SNAPS_TEST_FILE=$(mktemp)
     mkdir -p "$MNT"
 }
 
@@ -25,7 +24,6 @@ setup_snazzer() {
 
 teardown_snazzer() {
     printf "Running fixture group teardown for %s..." "$TEST"
-    rm "$SNAPS_TEST_FILE"
     teardown_mnt >/dev/null 2>/dev/null
     echo " done."
 }
@@ -44,6 +42,7 @@ setup() {
             ;;
         *snazzer-list.bats)
             export KEEP_FIXTURES=1
+            export SNAP_LIST_FILE=$(mktemp)
             SETUP_SNAPSHOTS=1 setup_snazzer
             ;;
         *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
@@ -56,7 +55,10 @@ teardown() {
     case "$TEST" in
         *snazzer.bats) teardown_snazzer ;;
         *snazzer-prune.bats) teardown_snazzer ;;
-        *snazzer-list.bats) teardown_snazzer ;;
+        *snazzer-list.bats)
+            teardown_snazzer
+            rm "$SNAP_LIST_FILE"
+            ;;
         *) echo "ERROR: unknown test '$TEST'" >&2; exit 1 ;;
     esac
 }

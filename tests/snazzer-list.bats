@@ -13,7 +13,7 @@ setup() {
     if [ -z "$IMG" ]; then export IMG=$BATS_TMPDIR/btrfs.img; fi
     if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
     if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
-        SNAPS_TEST_FILE=$(mktemp)
+        SNAP_LIST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
         if mountpoint -q "$MNT"; then
             teardown_mnt
@@ -41,7 +41,7 @@ HERE
 
 expected_list_snapshots_output() {
     NUM_EXCL=2
-    cat "$SNAPS_TEST_FILE"
+    cat "$SNAP_LIST_FILE"
     cat <<HERE
 
 $NUM_EXCL subvolumes excluded in $MNT by ${SNAZZER_SUBVOLS_EXCLUDE_FILE}.
@@ -78,7 +78,7 @@ HERE
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
     if [ "$MNT" != "/tmp/snazzer-tests/mnt" ]; then
-        rm "$SNAPS_TEST_FILE"
+        rm "$SNAP_LIST_FILE"
         teardown_mnt >/dev/null 2>/dev/null
     fi
 }

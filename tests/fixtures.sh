@@ -100,8 +100,8 @@ setup_snapshots() {
         while read DATE <&6; do
             su_do btrfs subvolume snapshot -r "$SUBVOL" \
                 "$SUBVOL/.snapshotz/$DATE" >/dev/null
-            if [ -n "$SNAPS_TEST_FILE" ]; then
-                echo "$SUBVOL/.snapshotz/$DATE" >>"$SNAPS_TEST_FILE"
+            if [ -n "$SNAP_LIST_FILE" ]; then
+                echo "$SUBVOL/.snapshotz/$DATE" >>"$SNAP_LIST_FILE"
             fi
         done 6<"$TMP_DATES"
     done

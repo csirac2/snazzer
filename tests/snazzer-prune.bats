@@ -15,7 +15,6 @@ setup() {
     if [ -z "$MNT" ]; then export MNT=$BATS_TMPDIR/mnt; fi
 
     if [ "$KEEP_FIXTURES" != "1" ]; then
-        SNAPS_TEST_FILE=$(mktemp)
         [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
         if mountpoint -q "$MNT"; then
             teardown_mnt
@@ -98,7 +97,6 @@ $SNAP"; else THIS=$SNAP; fi
 # setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
     if [ "$KEEP_FIXTURES" != "1" ]; then
-        rm "$SNAPS_TEST_FILE"
         teardown_mnt >/dev/null 2>/dev/null
     fi
 }
