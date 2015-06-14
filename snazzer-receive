@@ -124,7 +124,7 @@ dry_send() {
     $(if [ "$LOCAL_RUN" = "1" ]; then
         if [ -n "$SNAP_PARENT_PATH" ]; then
             cat <<CMD2
-                $SUDO btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC' | \
+                $SUDO btrfs send '$SNAP_ABSPATH_ESC' '-p' '$SNAP_PARENT_PATH_ESC' | \
                     $SUDO btrfs receive '$DEST_SUBVOL_ESC/.snapshotz/.incomplete'
 CMD2
         else
@@ -135,7 +135,7 @@ CMD3
         fi
     else
         if [ -n "$SNAP_PARENT_PATH" ]; then
-            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC'"
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' '-p' '$SNAP_PARENT_PATH_ESC'"
         else
             CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC'"
         fi
@@ -184,7 +184,7 @@ do_send() {
     else
     # Don't forget to copy the lines below into dry_send() between CMD4 heredoc
         if [ -n "$SNAP_PARENT_PATH" ]; then
-            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' -p '$SNAP_PARENT_PATH_ESC'"
+            CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC' '-p' '$SNAP_PARENT_PATH_ESC'"
         else
             CMD="sudo -n btrfs send '$SNAP_ABSPATH_ESC'"
         fi

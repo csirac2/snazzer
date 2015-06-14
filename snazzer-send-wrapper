@@ -3,11 +3,22 @@ set -e
 export PATH=/bin:/usr/bin:/sbin:/usr/local/bin
 
 log_cmd() {
-    logger -p user.info "$0 (for $SSH_CLIENT) running: $1" >&2
+    MSG="$0 (for $SSH_CLIENT)  running: $SSH_ORIGINAL_COMMAND"
+    logger -p user.info "$MSG"
 }
 
-log_error_cmd() {
-    logger -p user.error "ERROR: $0 (for $SSH_CLIENT) refused to run: $1" >&2
+log_cmd_and_exit() {
+    MSG="$0 (for $SSH_CLIENT) REJECTED: $SSH_ORIGINAL_COMMAND"
+    if [ -n "$2" ];
+        then MSG="$MSG ### REASON: $2"
+    fi
+    logger -p user.error "$MSG"
+    echo "$MSG" >&2
+    if [ -n "$1" -a "$1" != "0" ]; then
+        exit "$1"
+    else
+        exit 1
+    fi
 }
 
 squote_args() {
@@ -27,37 +38,29 @@ squote_args() {
 # ASSUMPTION: All arguments are inside single-quoted strings using '\'' to
 # escape internal single quotes (and we interpolate '\'' -> ' for you). So
 # instead of:
-#   foo run --bar --cat=" someone's dog "
-# you must have:
-#   foo 'run' '--bar' '--cat=" someone'\\''s dog "'
+#   bla --bar --cat=" someone's dog " --foo='a "b" c'
+# ARGS must be of the form:
+#   'bla' '--bar' '--cat=" someone'\''s dog "' '--foo='\''a "b" c'\'''
 #
-# TESTING:
-# snazzer_list_snapshots "'--all=\" some stuff \"' 'hel'\\\\'' squot '\\\\''lo' 'asd \" dquot \" fgh' 'ap ple' ' bon'\\\\''squot'\\\\''jour' 'there'"
-# uncomment in do_snazzer: while [ -n "$1" ]; do echo "ARG: $1"; shift; done
-# output:
-#   ARG: --all=" some stuff "
-#   ARG: hel' squot 'lo
-#   ARG: asd " dquot " fgh
-#   ARG: ap ple
-#   ARG:  bon'squot'jour
-#   ARG: there
+# SMELL: We haven't really thought through erroneous backslashes, but that
+# should only cause arg mangling, shouldn't result in any shell escape vuln as
+# long as the real command can handle it (!) and is called using "$@"
 #
-# SMELL: We haven't really thought through erroneous backslashes, but that will
-# only cause arg mangling, shouldn't result in any shell escape vuln as long as
-# the real command can handle it (!) and is called using "$@"
-snazzer_list_snapshots() {
-    ARGS=$1
+# IMPORTANT: Refer to tests/snazzer-send-wrapper.bats test cases
+dispatch_cmd() {
+    CMD=$1
+    ARGS=$2
     ARGN=
     PHASE=right
 
     shift
+    shift
+    [ -n "$CMD" -a -n "$ARGS" ]
     if ! echo "$ARGS" | grep -q "^ *'.*' *$"; then
-        echo "ERROR: args must start and end with single-quotes" >&2
-        echo "$ARGS" >&2
-        exit 99
+        log_cmd_and_exit 99 "Args must start and end with single-quotes"
     fi
     # We parse from right-to-left, because we're (ab)using sed and it doesn't do
-    # non-hungry regex matching. It works by chopping the end off $ARGS
+    # non-greedy regex matching. It works by chopping the end off $ARGS
     # progressively until there's nothing left. $ARGN accumulates the truncated
     # bits for the right-most argument and is reset back to the empty string
     # once it is done and pushed onto "$@". Am I mad? A real language'd be nice
@@ -76,8 +79,7 @@ snazzer_list_snapshots() {
                 elif echo "$ARGS" | grep -q "'$"; then
                     PHASE=left
                 else
-                    echo "ERROR: This should never happen, stopped: $ARGS" >&2
-                    exit 99
+                    log_cmd_and_exit 99 "This should never happen, stopped: $ARGS"
                 fi
                 ;;
             split)
@@ -109,14 +111,60 @@ snazzer_list_snapshots() {
                 PHASE=right
                 ;;
             *)
-                echo "ERROR: This should never happen, stopped: $ARGS" >&2
-                exit 99
+                log_cmd_and_exit 99 "This should never happen, stopped: $ARGS"
                 ;;
         esac
     done
-    # while [ -n "$1" ]; do echo "ARG: $1" >&2; shift; done
-    log_cmd "sudo -n snazzer --list-snapshots $(squote_args "$@")"
-    sudo -n snazzer --list-snapshots "$@"
+    case "$CMD" in
+        list_snapshots)
+            log_cmd "sudo -n snazzer --list-snapshots $(squote_args "$@")"
+            for ARG in "$@"; do
+                if [ "$ARG" != "--all" -a "$(echo "$ARG" | cut -c 1)" = "-" ];
+                then
+                    log_cmd_and_exit 98 "list-snapshots: non-switch args only"
+                fi
+            done
+            sudo -n snazzer --list-snapshots "$@"
+            ;;
+        btrfs_send_p)
+            if [ "$#" = "3" -a "$2" = "-p" -a "$(echo "$1" | cut -c 1)" != "-" \
+                -a "$(echo "$3" | cut -c 1)" != "-" ];
+            then
+                log_cmd "sudo -n btrfs send $(squote_args "$1") -p $(squote_args "$3")"
+                sudo -n btrfs send "$1" -p "$3"
+            else
+                log_cmd_and_exit 98 "btrfs send X -p Y bad no. args or switches"
+            fi
+            ;;
+        btrfs_send)
+            if [ "$#" = "1" -a "$(echo "$1" | cut -c 1)" != "-" ]; then
+                log_cmd "sudo -n btrfs send $(squote_args "$1")"
+                sudo -n btrfs send "$1"
+            else
+                log_cmd_and_exit 98 "btrfs send X bad no. args or switches"
+            fi
+            ;;
+        grep_srl)
+            if [ "$#" = "2" -a "$(echo "$1" | cut -c 1)" != "-" -a \
+                "$(echo "$2" | cut -c 1)" != "-" ]; then
+                log_cmd "sudo -n grep -srl $(squote_args "$1") $(squote_args "$2")"
+                sudo -n grep -srl "$1" "$2"
+            else
+                log_cmd_and_exit 98 "grep -srl must have two non-switch arguments"
+            fi
+            ;;
+        cat_measurement)
+            if [ "$#" = "1" -a "$(echo "$1" | cut -c 1)" != "-" ]; then
+                log_cmd "sudo -n cat $(squote_args "$1")"
+                sudo -n cat "$1"
+            else
+                log_cmd_and_exit 98 "cat: single non-switch argument only"
+            fi
+            ;;
+        *)
+            log_cmd_and_exit 127 "Bad dispatch '$CMD', this should never happen"
+            ;;
+    esac
 }
 
 run_cmd() {
@@ -124,59 +172,23 @@ run_cmd() {
     case "$CMD" in
         "sudo -n snazzer --list-snapshots"*)
             ARGS="$(echo "$CMD" | sed "s|^sudo -n snazzer --list-snapshots ||g")"
-            snazzer_list_snapshots "$ARGS"
+            dispatch_cmd "list_snapshots" "$ARGS"
             ;;
-        "sudo -n grep -srl '"*"'"*"'"*"/.snapshotz/.measurements/'")
-            # There's effectively two arbitrary arguments in our desired command, so
-            # we've chickened out of allowing internal single quotes in hostnames
-            HOST="$(echo "$CMD" | sed -n \
-                "s|^sudo -n grep -srl  *'\([^-'][^']*\)'  *'\([^-].*\)' *$|\1|p")"
-            DIR="$( echo "$CMD" | sed -n \
-                "s|^sudo -n grep -srl  *'\([^-'][^']*\)'  *'\([^-].*\)' *$|\2|p")"
-            if [ -n "$HOST" -a -n "$DIR" ]; then
-                log_cmd "sudo -n grep -srl \"$HOST\" \"$DIR\""
-                sudo -n grep -srl "$HOST" "$DIR"
-            else
-                log_error_cmd "$CMD"
-                exit 98
-            fi
+        "sudo -n grep -srl '^> on "*"' '"*"/.snapshotz/.measurements/'")
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n grep -srl ||g")"
+            dispatch_cmd "grep_srl" "$ARGS"
             ;;
-        "sudo -n btrfs send '"*"/.snapshotz/"*"' -p '"*"/.snapshotz/"*"'")
-            # There's effectively two arbitrary arguments in our desired command, so
-            # we've chickened out of allowing internal single quotes in paths
-            DIR="$(echo "$CMD" | sed -n \
-                "s|^sudo -n btrfs send '\([^-][^']*\.snapshotz/[^']*\)' -p '\([^-][^']*\.snapshotz/[^']*\)' *$|\1|p")"
-            PAR="$(echo "$CMD" | sed -n \
-                "s|^sudo -n btrfs send '\([^-][^']*\.snapshotz/[^']*\)' -p '\([^-][^']*\.snapshotz/[^']*\)' *$|\2|p")"
-            if [ -n "$DIR" -a -n "$PAR" ]; then
-                log_cmd "sudo -n btrfs send \"$DIR\" -p \"$PAR\""
-                sudo -n btrfs send "$DIR" -p "$PAR"
-            else
-                log_error_cmd "$CMD"
-                exit 98
-            fi
+        "sudo -n btrfs send '"*"/.snapshotz/"*"' '-p' '"*"/.snapshotz/"*"'")
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n btrfs send ||g")"
+            dispatch_cmd "btrfs_send_p" "$ARGS"
             ;;
         "sudo -n btrfs send '"*"/.snapshotz/"*"'")
-            DIR="$(echo "$CMD" | sed -n \
-                "s|^sudo -n btrfs send '\([^-].*\.snapshotz/.*\)' *$|\1|p")"
-            if [ -n "$DIR" ]; then
-                log_cmd "sudo -n btrfs send \"$DIR\""
-                sudo -n btrfs send "$DIR"
-            else
-                log_error_cmd "$CMD"
-                exit 98
-            fi
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n btrfs send ||g")"
+            dispatch_cmd "btrfs_send" "$ARGS"
             ;;
         "sudo -n cat '"*"/.snapshotz/.measurements/"*"'")
-            FILE="$(echo "$CMD" | sed -n \
-                "s|^sudo -n cat '\([^-].*\.snapshotz/\.measurements/.*\)' *$|\1|p")"
-            if [ -n "$FILE" ]; then
-                log_cmd "sudo -n cat \"$FILE\""
-                sudo -n cat "$FILE"
-            else
-                log_error_cmd "$CMD"
-                exit 98
-            fi
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n cat ||g")"
+            dispatch_cmd "cat_measurement" "$ARGS"
             ;;
         *)
             cat <<HERE >&2
@@ -225,8 +237,8 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
   SSH_ORIGINAL_COMMAND="sudo -n snazzer --list-snapshots '--all'" \
     ./snazzer-send-wrapper
 
-  SSH_ORIGINAL_COMMAND="sudo -n grep \
-    'remotehost1' '/some/.snapshotz/.measurements/'" snazzer-send-wrapper
+  SSH_ORIGINAL_COMMAND="sudo -n grep -srl \
+    'sendinghost1' '/some/.snapshotz/.measurements/'" snazzer-send-wrapper
 
   SSH_ORIGINAL_COMMAND="sudo -n btrfs send \
     '/some/.snapshotz/2015-04-01T000000Z'" snazzer-send-wrapper
@@ -254,18 +266,19 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
 
 =head1 DESCRIPTION
 
-This is a wrapper script to be used in place of a real login shell in order to
-restrict the commands available to the B<snazzer-receive> user account which
-ultimately runs C<btrfs send>. It may be utilized by adding an entry in the
-C<~/.ssh/authorized_keys> file on a host C<remotehost1> under the user account
-which is accessed with B<snazzer-receive>. C<~/.ssh/authorized_keys>:
+This is a wrapper script to be used in place of a real login shell (Eg. as an
+ssh(1) forced command) in order to restrict the commands available to the user
+account used by B<snazzer-receive> to run C<btrfs send>. It may be utilized by
+adding an entry in the C<~/.ssh/authorized_keys> file on the sending host (Eg.
+C<sendinghost1>) under the user account used by B<snazzer-receive> to run
+C<btrfs send>.  C<~/.ssh/authorized_keys>:
 
     command="/usr/bin/snazzer-send-wrapper",no-port-forwarding, \
         no-X11-forwarding,no-pty ssh-rsa AAAA...snip...== my key
 
-And then (as an example) receive btrfs snapshots from this C<remotehost1>:
+And then (as an example) receive btrfs snapshots from this C<sendinghost1>:
 
-    snazzer-receive remotehost1 --all
+    snazzer-receive sendinghost1 --all
 
 =head1 ENVIRONMENT
 
@@ -287,20 +300,21 @@ A better design would be custom command tokens issued with more easily parsed
 string and argument delimeters. This would require some changes to
 B<snazzer-receive>.
 
-A mitigating factor is that all real commands executed by this script are run
-like so:
+A mitigating factor is that all commands are executed in the form of:
 
   foo "$@"
 
-Rather than any variant of the far more dangerous:
+Rather than any variant of the more exciting:
 
   foo $BAREWORD_ARGUMENTS
 
-And so this should prevent shell escapes, assuming the command C<foo> can handle
-arbitrary arguments.
+or
 
-Additionally, for commands other than C<snazzer --list-snapshots>, arguments in
-"$@" are checked for prefixes with "-" (these result in an error).
+  eval "$SSH_ORIGINAL_COMMAND"
+
+This wrapper script is also sanity-checked with bats regression tests which
+check that only the correct number of arguments, valid arguments, switches,
+path patterns and escape characters are dealt with - anything else is rejected. 
 
 =back
 
@@ -317,7 +331,7 @@ non-zero exit status under the following conditions:
 
 =item 99. the command string was recognized and an attempt was made to
 parse/re-pack the arguments however the argument string had dangling quotes or
-otherwise confused the parser/"$@" unpacker (C<snazzer --list-snapshots> only)
+otherwise confused the parser/"$@" unpacker
 
 =back
 

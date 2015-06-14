@@ -7,8 +7,8 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
     SSH_ORIGINAL_COMMAND="sudo -n snazzer --list-snapshots '--all'" \
       ./snazzer-send-wrapper
 
-    SSH_ORIGINAL_COMMAND="sudo -n grep \
-      'remotehost1' '/some/.snapshotz/.measurements/'" snazzer-send-wrapper
+    SSH_ORIGINAL_COMMAND="sudo -n grep -srl \
+      'sendinghost1' '/some/.snapshotz/.measurements/'" snazzer-send-wrapper
 
     SSH_ORIGINAL_COMMAND="sudo -n btrfs send \
       '/some/.snapshotz/2015-04-01T000000Z'" snazzer-send-wrapper
@@ -30,18 +30,19 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
 
 # DESCRIPTION
 
-This is a wrapper script to be used in place of a real login shell in order to
-restrict the commands available to the **snazzer-receive** user account which
-ultimately runs `btrfs send`. It may be utilized by adding an entry in the
-`~/.ssh/authorized_keys` file on a host `remotehost1` under the user account
-which is accessed with **snazzer-receive**. `~/.ssh/authorized_keys`:
+This is a wrapper script to be used in place of a real login shell (Eg. as an
+ssh(1) forced command) in order to restrict the commands available to the user
+account used by **snazzer-receive** to run `btrfs send`. It may be utilized by
+adding an entry in the `~/.ssh/authorized_keys` file on the sending host (Eg.
+`sendinghost1`) under the user account used by **snazzer-receive** to run
+`btrfs send`.  `~/.ssh/authorized_keys`:
 
     command="/usr/bin/snazzer-send-wrapper",no-port-forwarding, \
         no-X11-forwarding,no-pty ssh-rsa AAAA...snip...== my key
 
-And then (as an example) receive btrfs snapshots from this `remotehost1`:
+And then (as an example) receive btrfs snapshots from this `sendinghost1`:
 
-    snazzer-receive remotehost1 --all
+    snazzer-receive sendinghost1 --all
 
 # ENVIRONMENT
 
@@ -57,20 +58,21 @@ And then (as an example) receive btrfs snapshots from this `remotehost1`:
     string and argument delimeters. This would require some changes to
     **snazzer-receive**.
 
-    A mitigating factor is that all real commands executed by this script are run
-    like so:
+    A mitigating factor is that all commands are executed in the form of:
 
         foo "$@"
 
-    Rather than any variant of the far more dangerous:
+    Rather than any variant of the more exciting:
 
         foo $BAREWORD_ARGUMENTS
 
-    And so this should prevent shell escapes, assuming the command `foo` can handle
-    arbitrary arguments.
+    or
 
-    Additionally, for commands other than `snazzer --list-snapshots`, arguments in
-    "$@" are checked for prefixes with "-" (these result in an error).
+        eval "$SSH_ORIGINAL_COMMAND"
+
+    This wrapper script is also sanity-checked with bats regression tests which
+    check that only the correct number of arguments, valid arguments, switches,
+    path patterns and escape characters are dealt with - anything else is rejected. 
 
 # EXIT STATUS
 
@@ -81,7 +83,7 @@ non-zero exit status under the following conditions:
 - 98. the command string was recognized but the arguments were not safe
 - 99. the command string was recognized and an attempt was made to
 parse/re-pack the arguments however the argument string had dangling quotes or
-otherwise confused the parser/"$@" unpacker (`snazzer --list-snapshots` only)
+otherwise confused the parser/"$@" unpacker
 
 # SEE ALSO
 

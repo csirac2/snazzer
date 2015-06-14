@@ -1,0 +1,16 @@
+#!/bin/sh
+case "$F" in
+    no_args)
+        echo $#;
+        ;;
+    ls_args)
+        while [ "$#" != "0" ]; do
+            printf '%s\n' "$1"
+            shift
+        done
+        ;;
+    *)
+        echo "ERROR: unknown action $F" >&2
+        exit 1
+        ;;
+esac
