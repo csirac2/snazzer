@@ -1,13 +1,8 @@
 #!/usr/bin/env bats
 # vi:syntax=sh
 
-# It's *much* faster to run this via run-tests.sh, but we always want to keep
-# these .bats files free of any dependency on run-tests.sh
-
 load "$BATS_TEST_DIRNAME/fixtures.sh"
 
-
-# setup/teardown is crazy slow, so skip it here if it's already done
 setup() {
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
@@ -60,9 +55,6 @@ expected_snapshots_raw() {
         "$(gather_snapshots | sort)" ]
 }
 
-# setup/teardown is crazy slow, so skip it here if it's already done
 teardown() {
     teardown_mnt "$MNT" >/dev/null 2>/dev/null
 }
-
-#trap '_teardown' EXIT
