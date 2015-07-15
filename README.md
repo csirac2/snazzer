@@ -9,8 +9,7 @@ and pruning.
 Features
 --------
 
-* Minimal dependencies (portable-ish sh script - a painful learning
-exercise...)
+* Minimal dependencies (portable-ish sh script, mostly checked with http://shellcheck.nett)
 * Maintains snapshots for each subvol under
   `subvol/.snapshotz/YYYY-MM-DDTHHMMSS+hhmm` i.e. a valid isodate
 * Operates on specific subvols, all subvols on a filesystem, or all
@@ -23,6 +22,7 @@ exercise...)
   subvols on a filesystem, or all subvols on all mounted filesystems,
   Eg: `snazzer-receive somehost --all` (or `snazzer-receive -- --all` to
   receive local paths without ssh in the middle)
+* Automated regression testing (TODO: snazzer-receive)
   
 Getting started
 ---------------
