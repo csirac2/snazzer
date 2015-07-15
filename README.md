@@ -9,7 +9,7 @@ and pruning.
 Features
 --------
 
-* Minimal dependencies (portable-ish sh script, mostly checked with http://shellcheck.nett)
+* Minimal dependencies (portable-ish sh script, mostly checked with http://shellcheck.net)
 * Maintains snapshots for each subvol under
   `subvol/.snapshotz/YYYY-MM-DDTHHMMSS+hhmm` i.e. a valid isodate
 * Operates on specific subvols, all subvols on a filesystem, or all
