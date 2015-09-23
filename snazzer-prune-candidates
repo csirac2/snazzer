@@ -30,12 +30,13 @@ my %retain_defaults = (
 my %retain_env_map =
   map { $_ => 'SNAZZER_' . uc($_) . '_TO_KEEP' } keys %retain_defaults;
 my %opts = (
-    man          => 0,
-    help         => 0,
-    verbose      => 0,
-    run_tests    => 0,
-    gen_examples => 0,
-    invert       => 0,
+    man             => 0,
+    help            => 0,
+    verbose         => 0,
+    run_tests       => 0,
+    gen_examples    => 0,
+    invert          => 0,
+    force_tty_stdin => 0,
 );
 my %retain;
 
@@ -49,6 +50,7 @@ sub init {
         'gen-example-input' => \$opts{gen_examples},
         'verbose'           => \$opts{verbose},
         'invert'            => \$opts{invert},
+        'force-tty-stdin'   => \$opts{force_tty_stdin},
         'yearlies=i'        => \$retain{yearlies},
         'monthlies=i'       => \$retain{monthlies},
         'daylies=i'         => \$retain{daylies},
@@ -601,11 +603,15 @@ elsif ( $opts{gen_examples} ) {
         )
     );
 }
+elsif ( !$opts{force_tty_stdin} && -t STDIN ) {
+    pod2usage( -exitval => 'NOEXIT', verbose => 0 );
+    log_error("STDIN looks like an interactive tty, try --force-tty-stdin");
+}
 else {
     my @input;
     my @output;
 
-    while (<>) {
+    while (<STDIN>) {
         push( @input, $_ );
     }
     @output = process(@input);
@@ -1137,6 +1143,8 @@ those which are no longer needed to meet retention preferences
 
 =item B<--tests:> Run tests (for developers/maintainers)
 
+=item B<--force-tty-stdin:> Skip checks for interactive tty on STDIN
+
 =back
 
 =head1 ENVIRONMENT
@@ -1202,6 +1210,8 @@ and non-zero exit status under the following conditions:
 =item 2. Line does not end in a valid datetime string pattern
 
 =item 3. Datetime contains obviously non-sensical digits
+
+=item 4. Detected an interactive tty and no --force-tty-stdin option was given
 
 =back
 
