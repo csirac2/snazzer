@@ -606,6 +606,7 @@ elsif ( $opts{gen_examples} ) {
 elsif ( !$opts{force_tty_stdin} && -t STDIN ) {
     pod2usage( -exitval => 'NOEXIT', verbose => 0 );
     log_error("STDIN looks like an interactive tty, try --force-tty-stdin");
+    exit 4;
 }
 else {
     my @input;
