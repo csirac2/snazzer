@@ -93,8 +93,9 @@ list_remote_snapshot_measurements() {
         MEAS_LIST=$($SUDO grep -srl "^> on $HOST at " \
             "$SUBVOL/.snapshotz/.measurements/" || true)
     else
+        # Beware whitespace in do_ssh arg affects send-wrapper sanity checks
         MEAS_LIST=$(do_ssh "$HOST" "sudo -n grep -srl '^> on $HOST_ESC at ' \
-            '$SUBVOL_ESC/.snapshotz/.measurements/'" || ( \
+'$SUBVOL_ESC/.snapshotz/.measurements/'" || ( \
             RC=$?
             if [ "$RC" != "1" ]; then
                 exit "$RC"
