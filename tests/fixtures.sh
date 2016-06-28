@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 su_do() {
     if [ "$(id -u)" = "0" ]; then

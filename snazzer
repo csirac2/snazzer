@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -e
 SNAZZER_VERSION=0.2
 SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"

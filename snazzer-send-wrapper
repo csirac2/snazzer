@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/usr/bin/env sh -e
 set -e
 export PATH=/bin:/usr/bin:/sbin:/usr/local/bin
 
