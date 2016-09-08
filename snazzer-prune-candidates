@@ -1,4 +1,4 @@
-#!/usr/bin/env perl -w
+#!/usr/bin/env perl
 package App::Snazzer::Prune;
 use strict;
 use warnings;
