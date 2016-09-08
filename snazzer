@@ -95,8 +95,8 @@ list_subvolumes() {
     fi
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     $SUDO btrfs subvolume list -t "$DIR" | tail -n+3 | \
-        $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
         sed 's/^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*//g' | \
+        $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
         while read SUBVOL; do echo "${DIR}$SUBVOL"; done
     rm "$EXCL_FILE"
 }
