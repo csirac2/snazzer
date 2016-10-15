@@ -22,12 +22,6 @@ $NUM_EXCL subvolumes excluded in $MNT by ${SNAZZER_SUBVOLS_EXCLUDE_FILE}.
 HERE
 }
 
-@test "snazzer --list-subvolumes --all [mountpoint]" {
-    run snazzer --list-subvolumes --all "$MNT"
-    [ "$status" = "0" ]
-    [ "$output" = "$(expected_list_subvolumes_output)" ]
-}
-
 expected_list_snapshots_output() {
     NUM_EXCL=2
     cat "$SNAP_LIST_FILE"
@@ -49,6 +43,14 @@ HERE
     [ -n "$PATH_SNAZZER" ]
     [ -n "$THIS_SNAZZER" ]
     [ "$PATH_SNAZZER" = "$THIS_SNAZZER" ]
+}
+
+@test "snazzer --list-subvolumes --all [mountpoint]" {
+    run snazzer --list-subvolumes --all "$MNT"
+    [ "$status" = "0" ]
+    echo "$output" > /tmp/output
+    echo "$(expected_list_subvolumes_output)" > /tmp/expected
+    [ "$output" = "$(expected_list_subvolumes_output)" ]
 }
 
 @test "snazzer --list-snapshots --all [mountpoint]" {

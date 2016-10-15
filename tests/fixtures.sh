@@ -11,7 +11,16 @@ su_do() {
 
 gen_subvol_list() {
     for SUBVOL in srv 'srv/s p a c e' home var/cache var/lib/docker/btrfs \
-        'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?';
+        'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?' \
+        tmp_thing;
+    do echo "$SUBVOL"; done
+}
+
+# As gen_subvol_list(), but filtered with exclude.patterns applied
+gen_subvol_list_excluded() {
+    for SUBVOL in srv 'srv/s p a c e' home \
+        'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?' \
+        tmp_thing;
     do echo "$SUBVOL"; done
 }
 
@@ -131,7 +140,7 @@ expected_list_subvolumes() {
     local MNT="$1"
     [ -n "$MNT" -a -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
     echo "$MNT"
-    gen_subvol_list | grep -v -f "$SNAZZER_SUBVOLS_EXCLUDE_FILE" | sed "s|^|$MNT/|g"
+    gen_subvol_list_excluded | sed "s|^|$MNT/|g"
 }
 
 snapshot_mnt() {
