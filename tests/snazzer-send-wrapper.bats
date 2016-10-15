@@ -4,18 +4,18 @@
 load "$BATS_TEST_DIRNAME/fixtures.sh"
 
 setup() {
-    export PATH=$BATS_TMPDIR/bin:$PATH
-    mkdir -p "$BATS_TMPDIR/bin"
-    cp "$BATS_TEST_DIRNAME/../snazzer-send-wrapper" "$BATS_TMPDIR/bin/"
-    chmod a+x "$BATS_TMPDIR/bin/snazzer-send-wrapper"
+    export PATH=$BATS_TMPDIR/snazzer-tests/bin:$PATH
+    mkdir -p "$BATS_TMPDIR/snazzer-tests/bin"
+    cp "$BATS_TEST_DIRNAME/../snazzer-send-wrapper" "$BATS_TMPDIR/snazzer-tests/bin/"
+    chmod a+x "$BATS_TMPDIR/snazzer-tests/bin/snazzer-send-wrapper"
     sed -i 's/^\(export PATH=.*\)/#\1 # disabled for tests/g' \
-        "$BATS_TMPDIR/bin/snazzer-send-wrapper"
-    cp "$BATS_TEST_DIRNAME/data/sudo" "$BATS_TMPDIR/bin/"
+        "$BATS_TMPDIR/snazzer-tests/bin/snazzer-send-wrapper"
+    cp "$BATS_TEST_DIRNAME/data/sudo" "$BATS_TMPDIR/snazzer-tests/bin/"
 }
 
 @test "snazzer-send-wrapper" {
-    run ./snazzer-send-wrapper
-    [ "$status" = "1" ]
+    run snazzer-send-wrapper
+    [ "$status" -eq "1" ]
 }
 
 @test "sudo -n snazzer --list-snapshots '--all'" {
@@ -42,8 +42,6 @@ snazzer
 
 @test "sudo -n snazzer --list-snapshots '--all' 'foo=\" some stuff \"' 'hel'\\\\'' squot '\\\\''lo' 'asd \" dquot \" fgh' 'ap ple' ' bon'\\\\''squot'\\\\''jour' 'there'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    echo "$status" >/tmp/status
-    echo "$output" >/tmp/output
     [ "$status" = "0" ]
     [ "$output" = "10" ]
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
@@ -294,7 +292,7 @@ cat
 }
 
 teardown() {
-    rm "$BATS_TMPDIR/bin/sudo"
-    rm "$BATS_TMPDIR/bin/snazzer-send-wrapper"
-    rmdir "$BATS_TMPDIR/bin"
+    rm "$BATS_TMPDIR/snazzer-tests/bin/sudo"
+    rm "$BATS_TMPDIR/snazzer-tests/bin/snazzer-send-wrapper"
+    rmdir "$BATS_TMPDIR/snazzer-tests/bin"
 }

@@ -27,6 +27,20 @@ expected_snapshots_raw() {
     done
 }
 
+@test "btrfs mkfs.btrfs in PATH" {
+    btrfs --help
+    mkfs.btrfs --help
+}
+
+@test "snazzer in PATH" {
+    local THIS_SNAZZER=$(readlink -f $BATS_TEST_DIRNAME/../snazzer)
+    local PATH_SNAZZER=$(readlink -f $(which snazzer))
+    
+    [ -n "$PATH_SNAZZER" ]
+    [ -n "$THIS_SNAZZER" ]
+    [ "$PATH_SNAZZER" = "$THIS_SNAZZER" ]
+}
+
 @test "snazzer --all [mountpoint]" {
     run snazzer --all "$MNT"
     [ "$status" = "0" ]
