@@ -47,7 +47,8 @@ create_img() {
         umount "$MNT"
     fi
     truncate -s 200M "$IMG"
-    su_do mkfs.btrfs "$IMG"
+    # rm .img if mkfs fails because create_img is skipped when it already exists
+    su_do mkfs.btrfs "$IMG" || rm "$IMG"
     su_do mount "$IMG" "$MNT"
     gen_subvol_list | populate_mnt "$MNT"
     if [ "$DO_SNAPSHOTS" = "1" ]; then
