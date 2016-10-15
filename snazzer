@@ -30,9 +30,9 @@ if ! $SUDO test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
     SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
     cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
 var/cache
-var/lib/docker
+var/lib/docker/*
 .snapshots
-*tmp*
+tmp
 *backup*
 *secret*
 HERE
@@ -723,8 +723,10 @@ snapshots already measured by current hostname
 Filename of newline separated list of shell glob patterns of subvolume pathnames
 which should be excluded from C<snazzer --all> invocations; compatible with
 C<--exclude-from> for B<du> and B<tar>.  Examples of subvolume patterns to
-exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/btrfs,
-.snapshots.  B<NOTE:> C<.snapshotz> is always excluded.
+exclude from regular snapshotting: *secret*, var/cache, var/lib/docker/*,
+.snapshots. The patterns are matched against subvolumes as listed by
+C<btrfs subvolume list <path>>, without a leading /.
+Note that   B<NOTE:> C<.snapshotz> is always excluded.
 Default:
 
   SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
