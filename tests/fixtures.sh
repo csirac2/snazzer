@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+set -e
 
 su_do() {
     if [ "$(id -u)" = "0" ]; then
@@ -45,7 +46,7 @@ create_img() {
     if df -T "$MNT" 2>/dev/null | grep "$MNT\$" 2>/dev/null >/dev/null; then
         umount "$MNT"
     fi
-    truncate -s 80M "$IMG"
+    truncate -s 200M "$IMG"
     su_do mkfs.btrfs "$IMG"
     su_do mount "$IMG" "$MNT"
     gen_subvol_list | populate_mnt "$MNT"
