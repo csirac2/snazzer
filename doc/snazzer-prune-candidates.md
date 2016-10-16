@@ -29,6 +29,7 @@ those which are no longer needed to meet retention preferences
         snazzer-prune-candidates --man-markdown > snazzer-prune-candidates-man.md
 
 - **--tests:** Run tests (for developers/maintainers)
+- **--force-tty-stdin:** Skip checks for interactive tty on STDIN
 
 # ENVIRONMENT
 
@@ -85,6 +86,7 @@ and non-zero exit status under the following conditions:
 - 1. A retention preference value contains anything other than digits
 - 2. Line does not end in a valid datetime string pattern
 - 3. Datetime contains obviously non-sensical digits
+- 4. Detected an interactive tty and no --force-tty-stdin option was given
 
 # BUGS AND LIMITATIONS
 
