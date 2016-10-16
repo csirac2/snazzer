@@ -77,8 +77,10 @@ snapshots already measured by current hostname
     Filename of newline separated list of shell glob patterns of subvolume pathnames
     which should be excluded from `snazzer --all` invocations; compatible with
     `--exclude-from` for **du** and **tar**.  Examples of subvolume patterns to
-    exclude from regular snapshotting: \*secret\*, /var/cache, /var/lib/docker/btrfs,
-    .snapshots.  **NOTE:** `.snapshotz` is always excluded.
+    exclude from regular snapshotting: \*secret\*, var/cache, var/lib/docker/\*,
+    .snapshots. The patterns are matched against subvolumes as listed by
+    `btrfs subvolume list <path`>, without a leading /.
+    Note that   **NOTE:** `.snapshotz` is always excluded.
     Default:
 
         SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"

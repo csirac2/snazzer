@@ -238,8 +238,10 @@ Prune only the explicitly named subvols at /srv, /var/log and root:
 Filename of newline separated list of shell glob patterns of subvolume pathnames
 which should be excluded from \f(CW\*(C`snazzer \-\-all\*(C'\fR invocations; compatible with
 \&\f(CW\*(C`\-\-exclude\-from\*(C'\fR for \fBdu\fR and \fBtar\fR.  Examples of subvolume patterns to
-exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/btrfs,
-\&.snapshots.  \fB\s-1NOTE:\s0\fR \f(CW\*(C`.snapshotz\*(C'\fR is always excluded.
+exclude from regular snapshotting: *secret*, var/cache, var/lib/docker/*,
+\&.snapshots. The patterns are matched against subvolumes as listed by
+\&\f(CW\*(C`btrfs subvolume list <path\*(C'\fR>, without a leading /.
+Note that   \fB\s-1NOTE:\s0\fR \f(CW\*(C`.snapshotz\*(C'\fR is always excluded.
 Default:
 .Sp
 .Vb 1
