@@ -8,7 +8,10 @@ perl:
     - "5.14"
     - "5.12"
     - "5.10"
-install: true
+install:
+    - sudo add-apt-repository ppa:ubuntu-lxc/buildd-backports -y
+    - sudo apt-get update -y
+    - sudo apt-get install btrfs-tools -y
 
 script:
     - make test
