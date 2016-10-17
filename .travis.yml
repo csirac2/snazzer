@@ -1,4 +1,6 @@
 language: perl
+sudo: required
+dist: trusty
 perl:
     - "5.20"
     - "5.18"
@@ -6,5 +8,10 @@ perl:
     - "5.14"
     - "5.12"
     - "5.10"
-script: "perl -w snazzer-prune-candidates --test"
-install: true
+install:
+    - sudo add-apt-repository ppa:ubuntu-lxc/buildd-backports -y
+    - sudo apt-get update -y
+    - sudo apt-get install btrfs-tools -y
+
+script:
+    - make test
