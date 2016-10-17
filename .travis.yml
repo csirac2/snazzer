@@ -1,4 +1,6 @@
 language: perl
+sudo: required
+dist: trusty
 perl:
     - "5.20"
     - "5.18"
@@ -6,5 +8,7 @@ perl:
     - "5.14"
     - "5.12"
     - "5.10"
-script: "perl -w snazzer-prune-candidates --test"
 install: true
+
+script:
+    - make test
