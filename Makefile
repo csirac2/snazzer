@@ -3,7 +3,7 @@ all: markdown manpages
 INSTALL_PREFIX:=/usr/local/bin
 
 $(INSTALL_PREFIX)/%: %
-	cp $< $@
+	install -Dm755 $< $@
 
 install: $(shell find . -maxdepth 1 -executable -type f \
 	-printf '$(INSTALL_PREFIX)/%p\n' )
