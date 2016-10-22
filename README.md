@@ -181,6 +181,8 @@ Longer-term goals
 License and Copyright
 ---------------------
 
-Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+Copyright (C) 2015-2016, Snazzer Authors All rights reserved. Snazzer Authors
+are listed in the AUTHORS.md file in the root of this distribution.
+NOTE: Please extend that file, not this notice.
 
 This project uses the 2-clause Simplified BSD License.

@@ -463,11 +463,13 @@ snazzer, snazzer-prune-candidates, snazzer-receive
 
 =head1 AUTHOR
 
-Paul Harvey <csirac2@gmail.com>, https://github.com/csirac2/snazzer
+Snazzer Authors are listed in the AUTHORS.md file in the root of this
+distribution. See https://github.com/csirac2/snazzer for more information.
+NOTE: Please extend that file, not this notice.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2015, Paul Harvey <csirac2@gmail.com> All rights reserved.
+Copyright (C) 2015-2016, Snazzer Authors All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
