@@ -1,22 +1,43 @@
 all: markdown manpages AUTHORS.md
 
-INSTALL_PREFIX:=/usr/local/bin
+INSTALL_PREFIX:=/usr/local
 
-$(INSTALL_PREFIX)/%: %
-	install -Dm755 $< $@
-
-install: $(shell find . -maxdepth 1 -executable -type f \
-	-printf '$(INSTALL_PREFIX)/%p\n' )
-
-uninstall:
-	rm $(shell find . -maxdepth 1 -executable -type f \
-	   	-printf '$(INSTALL_PREFIX)/%p\n')
+install: install-bin install-man
 
 clean:
 	rm -f AUTHORS.md
+	rm -f $(addprefix man/, $(addsuffix .8.gz, $(call ls_bin)))
+	[ ! -d man ] || rmdir man
+	for btrfs_mnt in btrfs.working.mnt btrfs-snapshots.working.mnt; do \
+		! mountpoint -q "/tmp/snazzer-tests/$$btrfs_mnt" ||            \
+		umount "/tmp/snazzer-tests/$$btrfs_mnt";                       \
+	done
 	rm -rf /tmp/snazzer-tests
 
+distclean: clean
+	rm -f bats
+	rm -rf tmp/bats
+	[ ! -d tmp ] || rmdir tmp
+
 test: bats-tests prune-tests
+
+ls_bin = $(shell find . -maxdepth 1 -executable -type f -printf '%P\n')
+
+uninstall:
+	rm -f $(addprefix $(INSTALL_PREFIX)/bin/, $(call ls_bin))
+	rm -f $(addprefix $(INSTALL_PREFIX)/share/man/man8/, $(addsuffix .8.gz, \
+		$(call ls_bin)))
+
+install-bin: $(addprefix $(INSTALL_PREFIX)/bin/, $(call ls_bin))
+
+$(INSTALL_PREFIX)/bin/%: %
+	install -Dm755 $< $@
+
+install-man: $(addprefix $(INSTALL_PREFIX)/share/man/man8/, $(addsuffix .8.gz, \
+	$(call ls_bin)))
+
+$(INSTALL_PREFIX)/share/man/man8/%.8.gz: man/%.8.gz
+	install -Dm644 $< $@
 
 bats-tests: | bats
 	PATH=.:$$PATH bats tests/
@@ -31,20 +52,18 @@ bats:
 prune-tests:
 	./snazzer-prune-candidates --tests
 
-markdown: $(shell find . -maxdepth 1 -executable -type f -printf 'doc/%p.md\n')\
-   	| doc
+markdown: $(addprefix doc/, $(addsuffix .md, $(call ls_bin)))
 
-manpages: $(shell find . -maxdepth 1 -executable -type f -printf 'man/%p.8\n') \
-	| man
-
-man/%.8: %
-	./$< --man-roff >$@
-
-doc/%.md: %
+doc/%.md: % | doc
 	./$< --man-markdown >$@
 
 doc:
 	mkdir $@
+
+manpages: $(addprefix man/, $(addsuffix .8.gz, $(call ls_bin)))
+
+man/%.8.gz: % | man
+	./$< --man-roff | gzip >$@
 
 man:
 	mkdir $@
@@ -58,4 +77,5 @@ AUTHORS.md:
 	git log --format='- %aN <%aE>'  | \
 		sort -u |grep -v 'Paul.W Harvey <csirac2@gmail.com>' >> $@
 
-.PHONY: uninstall clean test bats-tests bats prune-tests
+.PHONY: install uninstall install-bin install-man markdown manpages
+.PHONY: all clean distclean test bats-tests bats prune-tests
