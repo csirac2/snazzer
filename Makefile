@@ -1,4 +1,4 @@
-all: markdown manpages
+all: markdown manpages AUTHORS.md
 
 INSTALL_PREFIX:=/usr/local/bin
 
@@ -13,7 +13,8 @@ uninstall:
 	   	-printf '$(INSTALL_PREFIX)/%p\n')
 
 clean:
-	rm -r /tmp/snazzer-tests
+	rm -f AUTHORS.md
+	rm -rf /tmp/snazzer-tests
 
 test: bats-tests prune-tests
 
@@ -47,5 +48,14 @@ doc:
 
 man:
 	mkdir $@
+
+AUTHORS.md:
+	echo "SNAZZER AUTHORS" > $@
+	echo "===============" >>$@
+	echo >>$@
+	echo "Compiled automatically from git history, in alphabetical order:" >> $@
+	echo >>$@
+	git log --format='- %aN <%aE>'  | \
+		sort -u |grep -v 'Paul.W Harvey <csirac2@gmail.com>' >> $@
 
 .PHONY: uninstall clean test bats-tests bats prune-tests
