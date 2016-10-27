@@ -167,6 +167,11 @@ do_send() {
         DEST_SUBVOL="."
         DEST_SUBVOL_ESC="."
     fi
+    if [ "$PROGRESS" = "1" ]; then
+        EXTRA_ARGS="$(which pv) -trab | "
+    else
+        EXTRA_ARGS=""
+    fi
     SNAP_NAME=$(basename "$SNAP_ABSPATH")
     # Can't use do_ssh below, we must stream ssh output to btrfs receive
     # Don't forget to copy the lines below into dry_send() between CMD heredoc
@@ -176,10 +181,12 @@ do_send() {
         if [ -n "$SNAP_PARENT_PATH" ]; then
     # Don't forget to copy the lines below into dry_send() between CMD2 heredoc
             $SUDO btrfs send "$SNAP_ABSPATH" -p "$SNAP_PARENT_PATH" | \
+                eval $EXTRA_ARGS \
                 $SUDO btrfs receive "$DEST_SUBVOL/.snapshotz/.incomplete"
         else
     # Don't forget to copy the lines below into dry_send() between CMD3 heredoc
             $SUDO btrfs send "$SNAP_ABSPATH" | \
+                eval $EXTRA_ARGS \
                 $SUDO btrfs receive "$DEST_SUBVOL/.snapshotz/.incomplete"
         fi
     else
@@ -435,6 +442,12 @@ do_host() {
         echo "ERROR: This should never happen" >&2
         exit 127
     fi
+    if [ "$PROGRESS" = "1" ]; then
+        if [ ! -e "$(which pv)" ]; then
+            echo "ERROR: For progress display you need pv installed. Exiting" >&2
+            exit 127
+        fi
+    fi
     NUM_SUBVOL=0
     LIST_ERR=$(mktemp)
     LIST_OUT=$(mktemp)
@@ -466,6 +479,7 @@ do_host() {
 
 DRY_RUN=0
 LOCAL_RUN=0
+PROGRESS=0
 
 while [ "$(echo "$1" | grep -c "^-")" != "0" -a "$LOCAL_RUN" != "1" ]
 do
@@ -496,6 +510,10 @@ HERE
             ;;
         -d | --dry-run )
             DRY_RUN=1;
+            shift
+            ;;
+        --progress )
+            PROGRESS=1;
             shift
             ;;
         -- )
@@ -532,9 +550,9 @@ Receive snapshots from remote host via ssh:
 
 Receive snapshots from local filesystem:
 
-  snazzer-receive [--dry-run] -- --all [/path/to/btrfs/mountpoint]
+  snazzer-receive [--progress] [--dry-run] -- --all [/path/to/btrfs/mountpoint]
 
-  snazzer-receive [--dry-run] -- /local/subvol1 [/subvol2 [..]]
+  snazzer-receive [--progress] [--dry-run] -- /local/subvol1 [/subvol2 [..]]
 
 =head1 DESCRIPTION
 
@@ -575,6 +593,8 @@ file usually at C<$HOME/.ssh/config>.
 =item B<--man-markdown>: Full documentation as markdown output, Eg:
 
     snazzer-receive --man-markdown > snazzer-manpage.md
+
+=item B<--progress>: Show progress while sending the snapshots
 
 =back
 
