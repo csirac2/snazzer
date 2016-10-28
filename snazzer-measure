@@ -167,14 +167,28 @@ CMD
     echo ""
 }
 
+
+# function duplicated in snazzer
 glob2grep_file() {
     FILE=$1
     OUT=$(mktemp)
 
-    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' > "$OUT"
+    # check if every line starts with either / or *, if not it's a syntax error.
+    while read -r line; do
+        if ! [[ "$line" =~ ^[/\*].* ]]; then
+            echo "SYNTAX ERROR: $1 contains lines that start with neither / nor *." >&2
+            exit 12
+        fi
+    done < "$1"
+
+    # first, escape $, . and ^ with a backslash so they're taken literally
+    # then, extend * to .* to emulate shell globbing.
+    # finally, add ^ and $ to the line ends so the lines are not evaluated as *line*
+    sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' | sed 's/^/\^/g' | sed 's/$/\$/g' > "$OUT"
 
     echo "$OUT"
 }
+
 
 assert_gpg_secring_excluded() {
     if [ "$(gpg2 --list-secret-keys | wc -l)" = "0" ]; then
@@ -385,7 +399,7 @@ time+offset C<YYYY-MM-DDTHHMMSS+hhmm>
 Filename of newline separated list of shell glob patterns of subvolume pathnames
 which should be excluded from C<snazzer --all> invocations; compatible with
 C<--exclude-from> for B<du> and B<tar>.  Examples of subvolume patterns to
-exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/btrfs,
+exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/*,
 .snapshots.  B<NOTE:> C<.snapshotz> is always excluded.
 Default:
 

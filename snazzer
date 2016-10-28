@@ -29,10 +29,10 @@ if ! $SUDO test -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE"; then
     MISSING_SUBVOLS_EXCL_FILE="$SNAZZER_SUBVOLS_EXCLUDE_FILE"
     SNAZZER_SUBVOLS_EXCLUDE_FILE=$(mktemp)
     cat <<HERE > "$SNAZZER_SUBVOLS_EXCLUDE_FILE"
-var/cache
-var/lib/docker/*
-.snapshots
-tmp
+/var/cache
+/var/lib/docker/*
+*/.snapshots
+/tmp
 *backup*
 *secret*
 HERE
@@ -71,21 +71,30 @@ assert_btrfs_tools() {
     fi
 }
 
+# function duplicated in snazzer-measure
 glob2grep_file() {
     FILE=$1
     OUT=$(mktemp)
+
+    # check if every line starts with either / or *, if not it's a syntax error.
+    while read -r line; do
+        if ! [[ "$line" =~ ^[/\*].* ]]; then
+            echo "SYNTAX ERROR: $1 contains lines that start with neither / nor *." >&2
+            exit 12
+        fi
+    done < "$1"
 
     # first, escape $, . and ^ with a backslash so they're taken literally
     # then, extend * to .* to emulate shell globbing.
     # finally, add ^ and $ to the line ends so the lines are not evaluated as *line*
     sed 's|[$.^]|\\&|g' "$FILE" | sed 's/\*/\.*/g' | sed 's/^/\^/g' | sed 's/$/\$/g' > "$OUT"
 
-
     echo "$OUT"
 }
 
 # This should only operate on a real mount(8) filesystem mountpoint, so call
 # assert_mountpoint before calling list_subvolumes.
+# the DIR argument is assumed to be without a trailing slash, i.e. "/" or "/mnt" but not "/mnt/"
 list_subvolumes() {
     DIR=$1
     DO_INVERT=$2
@@ -94,14 +103,21 @@ list_subvolumes() {
     else
         GREP="grep -v"
     fi
+
     if [ "$DIR" != "/" ]; then
-            DIR="$DIR/"
+        PREFIX="$DIR"
+    else
+        PREFIX=""
     fi
+
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     $SUDO btrfs subvolume list -t "$DIR" | tail -n+3 | \
-        sed 's/^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*//g' | \
+        # delete all columns except path, prefix the paths with a /
+        sed 's|^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*|/|g' | \
+        # add / line, as the root subvolume is not included in btrfs subvolume list
+        (echo "/"; cat) | \
         $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
-        while read -r SUBVOL; do echo "${DIR}$SUBVOL"; done
+        while read -r SUBVOL; do echo "${PREFIX}$SUBVOL"; done
     rm "$EXCL_FILE"
 }
 
@@ -521,9 +537,7 @@ do_mountpoint() {
     if [ "$MOUNTPOINT" != "/" ]; then
         MOUNTPOINT=$(echo "$MOUNTPOINT" | sed 's|/$||g')
     fi
-    do_multiple "$DO_ACTION" "$MOUNTPOINT"
     report_subvols_excluded "$MOUNTPOINT" >> "$TMP_EXCL"
-    report_snapshot_dirs "$MOUNTPOINT" >> "$TMP_DIRS"
     assert_mountpoint "$MOUNTPOINT"
     list_subvolumes "$MOUNTPOINT" | {
         while read -r SUBVOL; do
@@ -682,10 +696,8 @@ snapshots already measured by current hostname
 Filename of newline separated list of shell glob patterns of subvolume pathnames
 which should be excluded from C<snazzer --all> invocations; compatible with
 C<--exclude-from> for B<du> and B<tar>.  Examples of subvolume patterns to
-exclude from regular snapshotting: *secret*, var/cache, var/lib/docker/*,
-.snapshots. The patterns are matched against subvolumes as listed by
-C<btrfs subvolume list <path>>, without a leading /.
-Note that   B<NOTE:> C<.snapshotz> is always excluded.
+exclude from regular snapshotting: *secret*, /var/cache, /var/lib/docker/*,
+*/.snapshots. Note that   B<NOTE:> C<.snapshotz> is always excluded.
 Default:
 
   SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
@@ -727,7 +739,7 @@ these empty directories behave differently to empty directories created with
 C<mkdir>: atimes always return with the current local time, which is obvioulsy
 different from one second to the next. So we have no hope of creating
 reproducible shasums or PGP signatures unless those directories are excluded
-from our measurements of the snapshot. See also: 
+from our measurements of the snapshot. See also:
 L<https://bugzilla.kernel.org/show_bug.cgi?id=95201>
 
 =back

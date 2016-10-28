@@ -15,7 +15,7 @@ git_describe_snazzer_version() {
 }
 
 gen_subvol_list() {
-    for SUBVOL in srv 'srv/s p a c e' home var/cache var/lib/docker/btrfs \
+    for SUBVOL in /srv '/srv/s p a c e' /home /var/cache /var/lib/docker/btrfs \
         'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?' \
         tmp_thing;
     do echo "$SUBVOL"; done
@@ -23,7 +23,7 @@ gen_subvol_list() {
 
 # As gen_subvol_list(), but filtered with exclude.patterns applied
 gen_subvol_list_excluded() {
-    for SUBVOL in srv 'srv/s p a c e' home \
+    for SUBVOL in /srv '/srv/s p a c e' /home \
         'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?' \
         tmp_thing;
     do echo "$SUBVOL"; done
