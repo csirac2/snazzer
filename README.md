@@ -4,7 +4,7 @@ snazzer
 btrfs snapshotting and backup system offering snapshot measurement, transport
 and pruning.
 
-[![Build Status](https://secure.travis-ci.org/csirac2/snazzer.png)](https://travis-ci.org/csirac2/snazzer)
+[![Build Status](https://travis-ci.org/csirac2/snazzer.svg?branch=master)](https://travis-ci.org/csirac2/snazzer)
 
 
 Features
