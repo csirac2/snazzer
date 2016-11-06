@@ -41,37 +41,37 @@ expected_snapshots_raw() {
 
 @test "snazzer --all [mountpoint]" {
     run snazzer --all "$MNT"
-    [ "$status" = "0" ]
     expected_snapshots | sort > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer --dry-run --all [mountpoint]" {
     run snazzer --dry-run --all "$MNT"
     [ "$status" = "0" ]
     eval "$output"
-    [ "$status" = "0" ]
     expected_snapshots | sort > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer [subvol]" {
     run snazzer "$MNT/home"
-    [ "$status" = "0" ]
     expected_snapshots_raw | grep "^$MNT/home" > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer [subvol1] [subvol2] [subvol3]" {
     run snazzer "$MNT/home" "$MNT/srv" "$MNT/var/cache"
-    [ "$status" = "0" ]
     expected_snapshots_raw | grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" \
         | sort > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 teardown() {

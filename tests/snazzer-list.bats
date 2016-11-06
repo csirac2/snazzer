@@ -44,18 +44,18 @@ HERE
 
 @test "snazzer --list-subvolumes --all [mountpoint]" {
     run snazzer --list-subvolumes --all "$MNT"
-    [ "$status" = "0" ]
     expected_list_subvolumes_output > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer --list-snapshots --all [mountpoint]" {
     run snazzer --list-snapshots --all "$MNT"
-    [ "$status" = "0" ]
     expected_list_snapshots_output > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer --list-snapshots --all [mountpoint/subvol]" {
@@ -65,20 +65,20 @@ HERE
 
 @test "snazzer --list-snapshots [/subvol1]" {
     run snazzer --list-snapshots "$MNT/home"
-    [ "$status" = "0" ]
     expected_list_snapshots_output | grep "^$MNT/home" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer --list-snapshots [/subvol1] [/subvol2] [/subvol3]" {
     run snazzer --list-snapshots "$MNT/home" "$MNT/srv" "$MNT/var/cache"
-    [ "$status" = "0" ]
     expected_list_snapshots_output | \
         grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" | \
         sort > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 teardown() {

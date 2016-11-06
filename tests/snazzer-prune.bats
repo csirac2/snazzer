@@ -61,10 +61,10 @@ $SNAP"; else THIS=$SNAP; fi
 @test  "snazzer --prune --all --force [mountpoint]" {
     BEFORE=$(gather_snapshots | sort)
     run snazzer --prune --all --force "$MNT"
-    [ "$status" = "0" ]
     fake_prune "$BEFORE" > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test  "snazzer --prune --all --dry-run [mountpoint]" {
@@ -75,25 +75,26 @@ $SNAP"; else THIS=$SNAP; fi
     fake_prune "$BEFORE" > $(expected_file)
     gather_snapshots | sort > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test  "snazzer --prune --force [subvol]" {
     BEFORE=$(gather_snapshots | sort | grep "^$MNT/home/\.snapshotz")
     run snazzer --prune --force "$MNT/home"
-    [ "$status" = "0" ]
     echo "$BEFORE" | snazzer-prune-candidates --invert > $(expected_file)
     gather_snapshots | sort | grep "^$MNT/home/\.snapshotz" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test  "snazzer --prune --force [subvol1] [subvol2] [subvol3]" {
     BEFORE=$(gather_snapshots | sort | grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz")
     run snazzer --prune --force "$MNT/home" "$MNT/srv" "$MNT"
-    [ "$status" = "0" ]
     fake_prune "$BEFORE" > $(expected_file)
     gather_snapshots | sort | \
         grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 teardown() {

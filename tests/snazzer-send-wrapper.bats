@@ -27,18 +27,18 @@ setup() {
 
 @test "sudo -n snazzer --list-snapshots '--all'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "4" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 snazzer
 --list-snapshots
 --all" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n snazzer --list-snapshots '--all' '--force'" {
@@ -53,12 +53,11 @@ snazzer
 
 @test "sudo -n snazzer --list-snapshots '--all' 'foo=\" some stuff \"' 'hel'\\\\'' squot '\\\\''lo' 'asd \" dquot \" fgh' 'ap ple' ' bon'\\\\''squot'\\\\''jour' 'there'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "10" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 snazzer
 --list-snapshots
@@ -71,15 +70,16 @@ ap ple
 there" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 # At some point we decided to error when args are switches, hence ^-prefix
 @test "sudo -n snazzer --list-snapshots 'bla' '^--bar' '^--cat=\" someone'\''s dog \"' '^--foo='\''a \"b\" c'\'''" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "7" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n snazzer --list-snapshots 'unbalance'd squote'" {
@@ -119,28 +119,27 @@ there" > $(expected_file b)
 
 @test "sudo -n btrfs send '/subvol/.snapshotz/FOO'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "4" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 btrfs
 send
 /subvol/.snapshotz/FOO" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n btrfs send '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "4" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 btrfs
 send
@@ -148,6 +147,7 @@ send
     > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n btrfs send -p" {
@@ -162,12 +162,11 @@ send
 
 @test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' '-p' '/subvol/.snapshotz/FOO1'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "6" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 btrfs
 send
@@ -176,6 +175,7 @@ send
 /subvol/.snapshotz/FOO1" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' -p '/subvol/.snapshotz/FOO1'" {
@@ -185,12 +185,11 @@ send
 
 @test "sudo -n btrfs send '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO2' '-p' '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO1'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "6" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 btrfs
 send
@@ -200,22 +199,23 @@ send
     > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n btrfs send '/subvol/.snapshotz/F'\\''OO'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "4" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 btrfs
 send
 /subvol/.snapshotz/F'OO" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n btrfs send '/subvol/.snapshotz/F'OO'" {
@@ -237,12 +237,11 @@ send
 
 @test "sudo -n grep -srl '^> on foo1-host at ' '/subvol/.snapshotz/.measurements/'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "5" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 grep
 -srl
@@ -250,16 +249,16 @@ grep
 /subvol/.snapshotz/.measurements/" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n grep -srl '^> on foo1-host at ' '/sub'\\''vol/.snapshotz/.measurements/'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "5" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 grep
 -srl
@@ -267,6 +266,7 @@ grep
 /sub'vol/.snapshotz/.measurements/" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n grep -srl '^> on foo1-host at ' '/subvol/.snapshotz/.measurements/junk'" {
@@ -297,32 +297,32 @@ grep
 
 @test "sudo -n cat '/subvol/.snapshotz/.measurements/FOO'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "3" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 cat
 /subvol/.snapshotz/.measurements/FOO" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n cat '/sub'\\''vol/.snapshotz/.measurements/FOO'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "0" ]
     echo "3" > $(expected_file)
     echo "$output" > $(actual_file)
     diff -u $(expected_file) $(actual_file)
-    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     [ "$status" = "0" ]
+    SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=ls_args run snazzer-send-wrapper
     echo "-n
 cat
 /sub'vol/.snapshotz/.measurements/FOO" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
+    [ "$status" = "0" ]
 }
 
 @test "sudo -n cat" {
