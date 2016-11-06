@@ -43,7 +43,7 @@ bats-tests: | bats
 	PATH=.:$$PATH bats tests/
 
 bats:
-	PATH=.:$$PATH bats --help >/dev/null || (                   \
+	@PATH=.:$$PATH bats --help >/dev/null || (                  \
 		mkdir tmp;                                              \
 		git clone https://github.com/sstephenson/bats tmp/bats; \
 		ln -s tmp/bats/bin/bats .;                              \
