@@ -7,6 +7,7 @@ setup() {
     export SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns
     export SNAZZER_DATE=$(date +"%Y-%m-%dT%H%M%S%z")
     export MNT=$(prepare_mnt)
+    export SNAZZER_TMP=$BATS_TMPDIR/snazzer-tests
     [ -e "$SNAZZER_SUBVOLS_EXCLUDE_FILE" ]
 }
 
@@ -33,40 +34,44 @@ expected_snapshots_raw() {
 }
 
 @test "snazzer in PATH" {
-    local THIS_SNAZZER=$(readlink -f $BATS_TEST_DIRNAME/../snazzer)
-    local PATH_SNAZZER=$(readlink -f $(which snazzer))
-    
-    [ -n "$PATH_SNAZZER" ]
-    [ -n "$THIS_SNAZZER" ]
-    [ "$PATH_SNAZZER" = "$THIS_SNAZZER" ]
+    readlink -f $BATS_TEST_DIRNAME/../snazzer > $(expected_file)
+    readlink -f $(which snazzer) > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
 }
 
 @test "snazzer --all [mountpoint]" {
     run snazzer --all "$MNT"
+    expected_snapshots | sort > $(expected_file)
+    gather_snapshots | sort > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer --dry-run --all [mountpoint]" {
     run snazzer --dry-run --all "$MNT"
     [ "$status" = "0" ]
-    eval "$output" >/dev/null 2>/dev/null
-    [ "$(expected_snapshots | sort)" = "$(gather_snapshots | sort)" ]
+    eval "$output"
+    expected_snapshots | sort > $(expected_file)
+    gather_snapshots | sort > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test "snazzer [subvol]" {
     run snazzer "$MNT/home"
+    expected_snapshots_raw | grep "^$MNT/home" > $(expected_file)
+    gather_snapshots | sort > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$(expected_snapshots_raw | grep "^$MNT/home")" = \
-        "$(gather_snapshots | sort)" ]
 }
 
 @test "snazzer [subvol1] [subvol2] [subvol3]" {
     run snazzer "$MNT/home" "$MNT/srv" "$MNT/var/cache"
+    expected_snapshots_raw | grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" \
+        | sort > $(expected_file)
+    gather_snapshots | sort > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$(expected_snapshots_raw | \
-        grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" | sort)" = \
-        "$(gather_snapshots | sort)" ]
 }
 
 teardown() {

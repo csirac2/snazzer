@@ -162,3 +162,13 @@ snapshot_mnt() {
 
     rm "$TMP_DATES"
 }
+
+expected_file() {
+    echo "$BATS_TMPDIR/snazzer-tests/$(basename \
+        $BATS_TEST_FILENAME)_${BATS_TEST_NUMBER}${1}.expected"
+}
+
+actual_file() {
+    echo "$BATS_TMPDIR/snazzer-tests/$(basename \
+        $BATS_TEST_FILENAME)_${BATS_TEST_NUMBER}${1}.actual"
+}

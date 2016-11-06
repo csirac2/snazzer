@@ -37,26 +37,25 @@ HERE
 }
 
 @test "snazzer in PATH" {
-    local THIS_SNAZZER=$(readlink -f $BATS_TEST_DIRNAME/../snazzer)
-    local PATH_SNAZZER=$(readlink -f $(which snazzer))
-    
-    [ -n "$PATH_SNAZZER" ]
-    [ -n "$THIS_SNAZZER" ]
-    [ "$PATH_SNAZZER" = "$THIS_SNAZZER" ]
+    readlink -f $BATS_TEST_DIRNAME/../snazzer > $(expected_file)
+    readlink -f $(which snazzer) > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
 }
 
 @test "snazzer --list-subvolumes --all [mountpoint]" {
     run snazzer --list-subvolumes --all "$MNT"
+    expected_list_subvolumes_output > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    echo "$output" > /tmp/output
-    echo "$(expected_list_subvolumes_output)" > /tmp/expected
-    [ "$output" = "$(expected_list_subvolumes_output)" ]
 }
 
 @test "snazzer --list-snapshots --all [mountpoint]" {
     run snazzer --list-snapshots --all "$MNT"
+    expected_list_snapshots_output > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$output" = "$(expected_list_snapshots_output)" ]
 }
 
 @test "snazzer --list-snapshots --all [mountpoint/subvol]" {
@@ -66,16 +65,20 @@ HERE
 
 @test "snazzer --list-snapshots [/subvol1]" {
     run snazzer --list-snapshots "$MNT/home"
+    expected_list_snapshots_output | grep "^$MNT/home" > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$output" = "$(expected_list_snapshots_output | grep "^$MNT/home")" ]
 }
 
 @test "snazzer --list-snapshots [/subvol1] [/subvol2] [/subvol3]" {
     run snazzer --list-snapshots "$MNT/home" "$MNT/srv" "$MNT/var/cache"
+    expected_list_snapshots_output | \
+        grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" | \
+        sort > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
     [ "$status" = "0" ]
-    [ "$(expected_list_snapshots_output | \
-        grep "^$MNT/\(home\|srv\|var/cache\)/\.snapshotz" |sort)" = "$output" ]
-    
 }
 
 teardown() {
