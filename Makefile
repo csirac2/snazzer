@@ -77,5 +77,24 @@ AUTHORS.md:
 	git log --format='- %aN <%aE>'  | \
 		sort -u |grep -v 'Paul.W Harvey <csirac2@gmail.com>' >> $@
 
+# assumes "#!/usr/bin/env foo", rewrites to "#!/path/to/foo"
+rewrite-shebangs-to-bin:
+	for script in $$(find . -maxdepth 1 -executable -type f -printf '%P\n');\
+		do\
+		script_bin=$$(sed -n '1s:.*[ /][ /]*\([^ /]*\)$$:\1:p' "$$script");\
+		sed -i "1s:.*[ /][ /]*\([^ /]*\)$$:#\!$$(which $$script_bin):g"\
+			"$$script";\
+	done
+
+# assumes "#!/path/to/foo", rewrites to "#!/usr/bin/env foo"
+rewrite-shebangs-to-env:
+	for script in $$(find . -maxdepth 1 -executable -type f -printf '%P\n');\
+		do\
+		script_bin=$$(sed -n '1s:.*[ /][ /]*\([^ /]*\)$$:\1:p' "$$script");\
+		sed -i "1s:.*[ /][ /]*\([^ /]*\)$$:#\!/usr/bin/env $$script_bin:g"\
+			"$$script";\
+	done
+
 .PHONY: install uninstall install-bin install-man markdown manpages
 .PHONY: all clean distclean test bats-tests bats prune-tests
+.PHONY: rewrite-shebangs-to-bin rewrite-shebangs-to-env
