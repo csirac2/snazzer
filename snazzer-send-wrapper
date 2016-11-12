@@ -14,7 +14,7 @@ log_cmd_and_exit() {
     fi
     logger -p user.error "$MSG"
     echo "$MSG" >&2
-    if [ -n "$1" -a "$1" != "0" ]; then
+    if [ -n "$1" ] && [ "$1" != "0" ]; then
         exit "$1"
     else
         exit 1
@@ -55,7 +55,7 @@ dispatch_cmd() {
 
     shift
     shift
-    [ -n "$CMD" -a -n "$ARGS" ]
+    [ -n "$CMD" ] && [ -n "$ARGS" ]
     if ! echo "$ARGS" | grep -q "^ *'.*' *$"; then
         log_cmd_and_exit 99 "Args must start and end with single-quotes"
     fi
@@ -86,7 +86,7 @@ dispatch_cmd() {
                 L=$(echo "$ARGS" | sed -n "s|^\(.*\)'\\\\''\(.*\)$|\1|p")
                 R=$(echo "$ARGS" | sed -n "s|^\(.*\)'\\\\''\(.*\)$|\2|p")
                 # If there are no '\'' left at all in $ARGS, stop splitting
-                if [ -z "$L" -a -z "$R" ]; then
+                if [ -z "$L" ] && [ -z "$R" ]; then
                     PHASE=left
                 # If truncation up to final ' is the same as truncation up to
                 # '\'', we're still processing current ARGN, keep splitting
@@ -119,7 +119,7 @@ dispatch_cmd() {
         list_snapshots)
             log_cmd "sudo -n snazzer --list-snapshots $(squote_args "$@")"
             for ARG in "$@"; do
-                if [ "$ARG" != "--all" -a "$(echo "$ARG" | cut -c 1)" = "-" ];
+                if [ "$ARG" != "--all" ] && [ "$(echo "$ARG" | cut -c 1)" = "-" ];
                 then
                     log_cmd_and_exit 98 "list-snapshots: non-switch args only"
                 fi
@@ -127,8 +127,9 @@ dispatch_cmd() {
             sudo -n snazzer --list-snapshots "$@"
             ;;
         btrfs_send_p)
-            if [ "$#" = "3" -a "$2" = "-p" -a "$(echo "$1" | cut -c 1)" != "-" \
-                -a "$(echo "$3" | cut -c 1)" != "-" ];
+            if [ "$#" = "3" ] && [ "$2" = "-p" ] && \
+                [ "$(echo "$1" | cut -c 1)" != "-" ] && \
+                [ "$(echo "$3" | cut -c 1)" != "-" ];
             then
                 log_cmd "sudo -n btrfs send $(squote_args "$1") -p $(squote_args "$3")"
                 sudo -n btrfs send "$1" -p "$3"
@@ -137,7 +138,7 @@ dispatch_cmd() {
             fi
             ;;
         btrfs_send)
-            if [ "$#" = "1" -a "$(echo "$1" | cut -c 1)" != "-" ]; then
+            if [ "$#" = "1" ] && [ "$(echo "$1" | cut -c 1)" != "-" ]; then
                 log_cmd "sudo -n btrfs send $(squote_args "$1")"
                 sudo -n btrfs send "$1"
             else
@@ -145,8 +146,8 @@ dispatch_cmd() {
             fi
             ;;
         grep_srl)
-            if [ "$#" = "2" -a "$(echo "$1" | cut -c 1)" != "-" -a \
-                "$(echo "$2" | cut -c 1)" != "-" ]; then
+            if [ "$#" = "2" ] && [ "$(echo "$1" | cut -c 1)" != "-" ] && \
+                [ "$(echo "$2" | cut -c 1)" != "-" ]; then
                 log_cmd "sudo -n grep -srl $(squote_args "$1") $(squote_args "$2")"
                 sudo -n grep -srl "$1" "$2"
             else
@@ -154,7 +155,7 @@ dispatch_cmd() {
             fi
             ;;
         cat_measurement)
-            if [ "$#" = "1" -a "$(echo "$1" | cut -c 1)" != "-" ]; then
+            if [ "$#" = "1" ] && [ "$(echo "$1" | cut -c 1)" != "-" ]; then
                 log_cmd "sudo -n cat $(squote_args "$1")"
                 sudo -n cat "$1"
             else

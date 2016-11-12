@@ -101,7 +101,7 @@ list_subvolumes() {
     $SUDO btrfs subvolume list -t "$DIR" | tail -n+3 | \
         sed 's/^[0-9]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*//g' | \
         $GREP -f "$EXCL_FILE" | grep -v '\.snapshotz' | \
-        while read SUBVOL; do echo "${DIR}$SUBVOL"; done
+        while read -r SUBVOL; do echo "${DIR}$SUBVOL"; done
     rm "$EXCL_FILE"
 }
 
@@ -125,7 +125,7 @@ report_subvols_excluded() {
 list_btrfs_mountpoints() {
     EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE")
     df -t btrfs 2>/dev/null | tail -n+2 | awk '{ print $1 }' | sort | uniq | \
-        while read DEV; do df --output=target "$DEV" | tail -n+2 ; done | \
+        while read -r DEV; do df --output=target "$DEV" | tail -n+2 ; done | \
         grep -v '\.snapshotz' | grep -v -f "$EXCL_FILE" || true
     rm "$EXCL_FILE"
 }
@@ -171,7 +171,7 @@ HERE
 report_snapshot_dirs() {
     SUBVOL=$1
 
-    if [ "$DO_ACTION" = "snapshot" -a "$SUBVOL" = "/" ]; then
+    if [ "$DO_ACTION" = "snapshot" ] && [ "$SUBVOL" = "/" ]; then
         SUBVOL_MNT=$(df --output=target "$SUBVOL" | tail -n+2)
         for DIR in "/tmp" "/var/tmp" "/var/cache" "/var/log"; do
             DIR_MNT=$(df --output=target "$DIR" | tail -n+2)
@@ -250,7 +250,7 @@ prune_shotz_dirs() {
     SUBVOL_SHOTZ=$1
     assert_missing "$SUBVOL_SHOTZ/.incomplete"
     $SUDO ls "$SUBVOL_SHOTZ" | snazzer-prune-candidates | \
-        while read SNAP_NAME; do echo "$SUBVOL_SHOTZ/$SNAP_NAME"; done
+        while read -r SNAP_NAME; do echo "$SUBVOL_SHOTZ/$SNAP_NAME"; done
 }
 
 dry_prune() {
@@ -260,7 +260,7 @@ dry_prune() {
     $(
         IFS=
         echo "$PRUNE_LIST
-<<<<EOF>>>>" | while read ITEM; do
+<<<<EOF>>>>" | while read -r ITEM; do
             if [ "$ITEM" = "<<<<EOF>>>>" ]; then
                 echo $SUDO btrfs subvolume delete "$@"
             else
@@ -271,7 +271,7 @@ dry_prune() {
 CMD
 }
 
-# SMELL: Ugly "while read" variable scope limitation work-around. Build up "$@"
+# SMELL: Ugly "while read -r" variable scope limitation work-around. Build up "$@"
 # to be used safely w/btrfs. <<<EOF>>> is an unlikely string marking end of list
 # at which point we make use of "$@" while it's still in scope.
 do_prune() {
@@ -280,7 +280,7 @@ do_prune() {
     (
         IFS=
         echo "$PRUNE_LIST
-<<<<EOF>>>>" | while read ITEM; do
+<<<<EOF>>>>" | while read -r ITEM; do
             if [ "$ITEM" = "<<<<EOF>>>>" ]; then
                 $SUDO btrfs subvolume delete "$@"
             else
@@ -304,7 +304,7 @@ prune() {
     NUM_AVAIL=$(list_dirs "$SUBVOL_SHOTZ" | grep -c . || true )
     if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
     echo "$SUBVOL_SHOTZ: pruning $NUM_PRUNE of $NUM_AVAIL"
-    if [ "$DRY_RUN" != "1" -a "$DO_FORCE" != "1" ]; then
+    if [ "$DRY_RUN" != "1" ] && [ "$DO_FORCE" != "1" ]; then
         echo "ERROR: --prune expected --force or --dry-run" >&2
         exit 5
     fi
@@ -398,12 +398,12 @@ measure() {
         # Collect measurements that don't mention our hostname
         SNAP_LIST=$($SUDO grep -rsL "^> on $(hostname) at" \
             "$SUBVOL_SHOTZ/.measurements" | \
-            while read SNAP_FULLPATH; do basename "$SNAP_FULLPATH"; done)
+            while read -r SNAP_FULLPATH; do basename "$SNAP_FULLPATH"; done)
         # Collect snapshot names without any measurements at all
         # SMELL: What a nasty way to do this. We're trying to limit the number
         # of different things a $SUDO user would need to open up in sudoers, but
         # that's a pretty terribly tedious use-case.
-        SNAP_MISSING=$(echo "$SNAP_LIST_AVAIL" | while read SNAP_NAME
+        SNAP_MISSING=$(echo "$SNAP_LIST_AVAIL" | while read -r SNAP_NAME
             do $SUDO test -e \
                 "$SUBVOL_SHOTZ/.measurements/$SNAP_NAME" || \
                     echo "$SNAP_NAME"
@@ -416,14 +416,14 @@ measure() {
     echo "$SUBVOL: measuring $NUM_MEAS of $NUM_AVAIL"
     if [ -n "$SNAP_LIST" ]; then
         if [ "$DRY_RUN" = "1" ]; then
-            echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
+            echo "$SNAP_LIST" | grep . | while read -r SNAP_NAME; do
                 echo "  $SNAP_NAME"
                 SNAP_PATH_ESC=$(echo "$SUBVOL_SHOTZ/$SNAP_NAME" | sed "s|'|'\\\\''|g")
                 REPORT_PATH_ESC=$(echo "$SUBVOL_SHOTZ/.measurements/$SNAP_NAME" | sed "s|'|'\\\\''|g")
                 dry_measure "$SNAP_PATH_ESC" "$REPORT_PATH_ESC" "../$SNAP_NAME"
             done
         else
-            echo "$SNAP_LIST" | grep . | while read SNAP_NAME; do
+            echo "$SNAP_LIST" | grep . | while read -r SNAP_NAME; do
                 echo "  $SNAP_NAME"
                 SNAP_PATH="$SUBVOL_SHOTZ/$SNAP_NAME"
                 REPORT_PATH="$SUBVOL_SHOTZ/.measurements/$SNAP_NAME"
@@ -478,47 +478,6 @@ do_multiple() {
     sync
 }
 
-test_img_write() {
-    FILE=$1
-    SIZE=$2
-    dd if=/dev/urandom of="$FILE" bs="$SIZE" count="1"
-}
-
-test_img_populate() {
-    MNT=$1
-    if [ "$MNT" = "/" ]; then MNT=""; fi
-    for SUBVOL in srv home etc/secrets var/lib/docker/btrfs var/cache \
-        usr/local/src "this is/something with/spaces in it" \
-        'BAM_$(ls *)/`echo sierra`' \
-        'echo `ls "/"; ls /;`; ~!@#$%^&*()_+-='"'"'[]'"'"'{}|:<>,./?'; do
-        SUBVOL_PARENT="$(dirname "$SUBVOL")"
-        SUBVOL_NAME="$(basename "$SUBVOL")"
-        mkdir -p "$MNT/$SUBVOL_PARENT"
-        btrfs subvolume create "$MNT/$SUBVOL"
-        test_img_write "$MNT/$SUBVOL/${SUBVOL_NAME}_junk" 500K
-        if [ "$SUBVOL_PARENT" = "." ]; then
-            test_img_write "$MNT/${SUBVOL_NAME}_junk" 500K
-        else
-            test_img_write "$MNT/${SUBVOL_PARENT}_${SUBVOL_NAME}_junk" 500K
-        fi
-    done
-}
-
-test_img_create() {
-    IMG=$1
-    if [ -z "$IMG" ]; then
-        echo "ERROR: --generate-test-img missing filename" >&2;
-        exit 1;
-    fi
-    MNT="$(mktemp -d)"
-    truncate -s 40M "$IMG"
-    mkfs.btrfs "$IMG"
-    mount "$IMG" "$MNT"
-    test_img_populate "$MNT"
-    umount "$MNT"
-    rmdir "$MNT"
-}
-
 DO_ACTION="snapshot"
 DO_FORCE=0
 DRY_RUN=0
@@ -548,7 +507,6 @@ HERE
         -f | --force ) DO_FORCE=1; ;;
         -d | --dry-run ) DRY_RUN=1; ;;
         -a | --all ) DO_ALL=1; ;;
-        -g | --generate-test-img ) test_img_create "$2"; exit; ;;
         * ) echo "ERROR: Invalid argument '$1'" >&2 ; exit ;;
     esac
     shift
@@ -567,7 +525,7 @@ do_mountpoint() {
     report_snapshot_dirs "$MOUNTPOINT" >> "$TMP_DIRS"
     assert_mountpoint "$MOUNTPOINT"
     list_subvolumes "$MOUNTPOINT" | {
-        while read SUBVOL; do
+        while read -r SUBVOL; do
             do_multiple "$DO_ACTION" "$SUBVOL"
             report_snapshot_dirs "$SUBVOL" >> "$TMP_DIRS"
         done
@@ -579,7 +537,7 @@ do_mountpoints() {
     TMP_DIRS=$(mktemp)
     if [ "$#" = 0 ]; then
         list_btrfs_mountpoints | {
-            while read MOUNTPOINT; do
+            while read -r MOUNTPOINT; do
                 do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
             done
         }
@@ -600,11 +558,11 @@ do_mountpoints() {
     rm "$TMP_DIRS"
 }
 
-if [ -z "$1" -a "$DO_ALL" != "1" ]; then
+if [ -z "$1" ] && [ "$DO_ALL" != "1" ]; then
     pod2usage -exit 0 "$0"
     echo "ERROR: Missing argument" >&2
     exit 1
-elif [ "$DO_FORCE" = "1" -a "$DRY_RUN" = "1" ]; then
+elif [ "$DO_FORCE" = "1" ] && [ "$DRY_RUN" = "1" ]; then
     pod2usage -exit 0 "$0"
     echo "ERROR: --force and --dry-run are incompatible" >&2
     exit 1
@@ -612,7 +570,7 @@ elif [ "$DO_ALL" = "1" ]; then
     assert_btrfs_tools
     if [ -z "$1" ]; then
         do_mountpoints
-    elif [ -n "$1" -a -z "$2" ]; then
+    elif [ -n "$1" ] && [ -z "$2" ]; then
         do_mountpoints "$1"
     else
         pod2usage -exit 0 "$0"
@@ -709,8 +667,6 @@ snapshots already measured by current hostname
 =item B<--man-markdown>: Full documentation as markdown output, Eg:
 
     snazzer --man-markdown > snazzer-manpage.md
-
-=item B<--generate-test-img> C<file.img>: create btrfs image for testing
 
 =back
 
