@@ -102,7 +102,7 @@ do_du() {
     EXCL_TMP=$(mktemp)
     # du doesn't understand relative exclude rules, so make them absolute
     # could use sed but that means complicated escapes to deal with hostile $DIR
-    $SUDO cat "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" | while read EXCL_RULE
+    $SUDO cat "$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE" | while read -r EXCL_RULE
     do
         echo "$DIR/$EXCL_RULE" >> "$EXCL_TMP"
     done
@@ -114,7 +114,7 @@ build_find_excl_switch() {
     DIR=$1
     EXCL_FILE="$DIR/$SNAZZER_MEASUREMENTS_EXCLUDE_FILE"
 
-    sed "s/'/'\\\\''/g" "$EXCL_FILE" | while read RULE
+    sed "s/'/'\\\\''/g" "$EXCL_FILE" | while read -r RULE
     do
         printf " -path '*%s' -prune -o" "$RULE"
     done
@@ -237,7 +237,7 @@ HERE
             measure_sha512sum "$FAKE_DIR" > "$SHA512_MEASUREMENT" &
         sleep 1 # SMELLLLLL... avoid stupid race condition where it seems that
                 # measure_gpg starts before tee does
-        if [ -s "$TMP_RC" -a "$(cat "$TMP_RC")" != "0" ]; then
+        if [ -s "$TMP_RC" ] && [ "$(cat "$TMP_RC")" != "0" ]; then
             exit "$(cat "$TMP_RC")"
         fi
         measure_gpg "$FAKE_DIR" < "$TMP_FIFO" > "$GPG_MEASUREMENT"
