@@ -2,16 +2,15 @@ language: perl
 sudo: required
 dist: trusty
 perl:
+    - "5.24"
     - "5.20"
-    - "5.18"
     - "5.16"
     - "5.14"
-    - "5.12"
     - "5.10"
 install:
     - sudo add-apt-repository ppa:ubuntu-lxc/buildd-backports -y
     - sudo apt-get update -y
-    - sudo apt-get install btrfs-tools -y
+    - sudo apt-get install btrfs-tools cabal-install -y
 
 script:
     - make test

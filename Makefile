@@ -1,6 +1,9 @@
 all: markdown manpages AUTHORS.md
 
 INSTALL_PREFIX:=/usr/local
+ls_bin        :=$(shell find . -maxdepth 1 -executable -type f -printf '%P\n')
+ls_bin_sh     :=$(shell find . -maxdepth 1 -executable -type f \
+				 -exec sed -n '1s:^\#!.*[ /]sh$$:{}:p' {} \;)
 
 install: install-bin install-man
 
@@ -21,8 +24,6 @@ distclean: clean
 	[ ! -d tmp ] || rmdir tmp
 
 test: bats-tests prune-tests
-
-ls_bin = $(shell find . -maxdepth 1 -executable -type f -printf '%P\n')
 
 uninstall:
 	rm -f $(addprefix $(INSTALL_PREFIX)/bin/, $(call ls_bin))
@@ -53,6 +54,20 @@ bats:
 
 prune-tests:
 	./snazzer-prune-candidates --tests
+
+shellcheck-tests: | shellcheck
+	PATH=~/.cabal/bin:tmp/bin:$$PATH shellcheck $(call ls_bin_sh)
+
+shellcheck:
+	@PATH=~/.cabal/bin/:$$PATH shellcheck --version >/dev/null || (\
+		mkdir -p tmp/bin;\
+		if ! cabal --version >/dev/null; then\
+			echo "ERROR: Missing cabal. Please install cabal-install" >&2;\
+			exit 1;\
+		fi;\
+		cabal update;\
+		cabal install ShellCheck;\
+	)
 
 markdown: $(addprefix doc/, $(addsuffix .md, $(call ls_bin)))
 
