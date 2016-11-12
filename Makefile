@@ -79,7 +79,7 @@ AUTHORS.md:
 
 # assumes "#!/usr/bin/env foo", rewrites to "#!/path/to/foo"
 rewrite-shebangs-to-bin:
-	for script in $$(find . -maxdepth 1 -executable -type f -printf '%P\n');\
+	for script in $(call ls_bin);\
 		do\
 		script_bin=$$(sed -n '1s:.*[ /][ /]*\([^ /]*\)$$:\1:p' "$$script");\
 		sed -i "1s:.*[ /][ /]*\([^ /]*\)$$:#\!$$(which $$script_bin):g"\
@@ -88,7 +88,7 @@ rewrite-shebangs-to-bin:
 
 # assumes "#!/path/to/foo", rewrites to "#!/usr/bin/env foo"
 rewrite-shebangs-to-env:
-	for script in $$(find . -maxdepth 1 -executable -type f -printf '%P\n');\
+	for script in $(call ls_bin);\
 		do\
 		script_bin=$$(sed -n '1s:.*[ /][ /]*\([^ /]*\)$$:\1:p' "$$script");\
 		sed -i "1s:.*[ /][ /]*\([^ /]*\)$$:#\!/usr/bin/env $$script_bin:g"\
