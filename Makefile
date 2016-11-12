@@ -15,8 +15,9 @@ clean:
 	rm -rf /tmp/snazzer-tests
 
 distclean: clean
-	rm -f bats
+	rm -f tmp/bin/bats
 	rm -rf tmp/bats
+	[ ! -d tmp/bin ] || rmdir tmp/bin
 	[ ! -d tmp ] || rmdir tmp
 
 test: bats-tests prune-tests
@@ -40,13 +41,14 @@ $(INSTALL_PREFIX)/share/man/man8/%.8.gz: man/%.8.gz
 	install -Dm644 $< $@
 
 bats-tests: | bats
-	PATH=.:$$PATH bats tests/
+	PATH=.:tmp/bin:$$PATH bats tests/
 
 bats:
-	@PATH=.:$$PATH bats --help >/dev/null || (                  \
-		mkdir tmp;                                              \
-		git clone https://github.com/sstephenson/bats tmp/bats; \
-		ln -s tmp/bats/bin/bats .;                              \
+	@PATH=tmp/bin:$$PATH bats --help >/dev/null || (\
+		mkdir -p tmp/bin;\
+		[ -f tmp/bats/bin/bats ] ||\
+			git clone https://github.com/sstephenson/bats tmp/bats;\
+		ln -s ../bats/bin/bats tmp/bin/;\
 	)
 
 prune-tests:
