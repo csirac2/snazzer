@@ -68,8 +68,6 @@ snapshots already measured by current hostname
 
         snazzer --man-markdown > snazzer-manpage.md
 
-- **--generate-test-img** `file.img`: create btrfs image for testing
-
 # ENVIRONMENT
 
 - SNAZZER\_SUBVOLS\_EXCLUDE\_FILE

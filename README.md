@@ -48,11 +48,6 @@ These man pages are also available at:
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-send-wrapper.md
 * https://github.com/csirac2/snazzer/blob/master/doc/snazzer-prune-candidates.md
 
-### Generate and mount a test btrfs filesystem image
-
-    snazzer --generate-test-img ~/test.img
-    mount ~/test.img /mnt
-    
 ### Snapshotting and pruning
 
 Snapshots are maintained in a directory under `.snapshotz` of the root of each btrfs subvolume. Snapshots are named as valid isodates in the form of `YYYY-MM-DDTHHMMSS+hhmm` (or `YYYY-MM-DDTHHMMSSZ` if `SNAZZER_USE_UTC` is set) under this directory. Here's the output of `sudo tree -a /mnt/home` after two snapshots have been created and measured:
