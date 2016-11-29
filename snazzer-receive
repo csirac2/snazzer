@@ -554,6 +554,14 @@ directories where necessary. Missing snapshots are instantiated directly with
 C<btrfs send> and C<btrfs receive>, using C<btrfs send -p [parent]> where
 possible to reduce transport overhead of incremental snapshots.
 
+B<snazzer-receive> never deletes any snapshots from the current working dir,
+even if the snapshots were e.g. pruned from the source.
+This can be used to build a flexible, multi-tiered backup strategy with
+different settings of how many snapshots to keep, but means that
+C<snazzer --prune> needs to be run on the current working directory as well for
+old snapshots to be deleted.
+
+
 Rather than offer ssh user/port/host specifications through B<snazzer-receive>,
 it is assumed all remote hosts are properly configured through your ssh config
 file usually at C<$HOME/.ssh/config>.
