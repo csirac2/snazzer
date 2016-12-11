@@ -176,7 +176,7 @@ glob2grep_file() {
     # check if every line starts with either / or *, if not, quit with a syntax error.
     while read -r line; do
         if ! echo "$line" | grep '^[/*]' >/dev/null; then
-            echo "SYNTAX ERROR: $1 contains line $line that start with neither / nor *." >&2
+            echo "SYNTAX ERROR: $1 contains line \"$line\" that starts with neither / nor *." >&2
             exit 12
         fi
     done < "$1"
