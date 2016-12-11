@@ -540,23 +540,21 @@ do_mountpoint() {
     fi
     report_subvols_excluded "$MOUNTPOINT" >> "$TMP_EXCL"
     assert_mountpoint "$MOUNTPOINT"
-    list_subvolumes "$MOUNTPOINT" | {
-        while read -r SUBVOL; do
-            do_multiple "$DO_ACTION" "$SUBVOL"
-            report_snapshot_dirs "$SUBVOL" >> "$TMP_DIRS"
-        done
-    }
+    SUBVOLS=$(list_subvolumes "$MOUNTPOINT") || exit $?
+    while read -r SUBVOL; do
+        do_multiple "$DO_ACTION" "$SUBVOL"
+        report_snapshot_dirs "$SUBVOL" >> "$TMP_DIRS"
+    done <<< $SUBVOLS
 }
 
 do_mountpoints() {
     TMP_EXCL=$(mktemp)
     TMP_DIRS=$(mktemp)
     if [ "$#" = 0 ]; then
-        list_btrfs_mountpoints | {
-            while read -r MOUNTPOINT; do
-                do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
-            done
-        }
+        MOUNTPOINTS=$(list_btrfs_mountpoints) || exit $?
+        while read -r MOUNTPOINT; do
+            do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
+        done <<< $MOUNTPOINTS
     else
         for MOUNTPOINT in "$@"; do
             do_mountpoint "$MOUNTPOINT" "$TMP_EXCL" "$TMP_DIRS"
