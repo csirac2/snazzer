@@ -125,7 +125,8 @@ report_subvols_excluded() {
     DIR=$1
     assert_mountpoint "$DIR"
     SUBVOLS=$(list_subvolumes "$DIR" --excluded) || exit $?
-    NUM=$(printf '%s' "$SUBVOLS" | wc -l)
+    # command substitution removes trailing newlines, we have to add it again for wc -l to give correct results.
+    NUM=$(printf "$SUBVOLS\n" | wc -l)
 
     if [ "$NUM" != "0" ]; then
         if [ "$DRY_RUN" = "1" ]; then printf "#"; fi
