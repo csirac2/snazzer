@@ -76,10 +76,8 @@ snapshots already measured by current hostname
     Filename of newline separated list of shell glob patterns of subvolume pathnames
     which should be excluded from `snazzer --all` invocations; compatible with
     `--exclude-from` for **du** and **tar**.  Examples of subvolume patterns to
-    exclude from regular snapshotting: \*secret\*, var/cache, var/lib/docker/\*,
-    .snapshots. The patterns are matched against subvolumes as listed by
-    `btrfs subvolume list <path`>, without a leading /.
-    Note that   **NOTE:** `.snapshotz` is always excluded.
+    exclude from regular snapshotting: \*secret\*, /var/cache, /var/lib/docker/\*,
+    \*/.snapshots. Note that   **NOTE:** `.snapshotz` is always excluded.
     Default:
 
         SNAZZER_SUBVOLS_EXCLUDE_FILE="/etc/snazzer/exclude.patterns"
@@ -117,7 +115,7 @@ snapshots already measured by current hostname
     `mkdir`: atimes always return with the current local time, which is obvioulsy
     different from one second to the next. So we have no hope of creating
     reproducible shasums or PGP signatures unless those directories are excluded
-    from our measurements of the snapshot. See also: 
+    from our measurements of the snapshot. See also:
     [https://bugzilla.kernel.org/show\_bug.cgi?id=95201](https://bugzilla.kernel.org/show_bug.cgi?id=95201)
 
 # EXIT STATUS
@@ -137,6 +135,7 @@ already in progress, check lock dir at /var/run/snazzer-measure.lock
 - 9. tried to display man page with a formatter which is not installed
 - 10. missing `snazzer-measure` or `snazzer-prune-candidates` from PATH
 - 11. missing `btrfs` command from PATH
+- 12. syntax error in /etc/snazzer/exclude.patterns file.
 
 # SEE ALSO
 

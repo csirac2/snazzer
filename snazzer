@@ -772,6 +772,8 @@ already in progress, check lock dir at /var/run/snazzer-measure.lock
 
 =item 11. missing C<btrfs> command from PATH
 
+=item 12. syntax error in /etc/snazzer/exclude.patterns file.
+
 =back
 
 =head1 SEE ALSO
