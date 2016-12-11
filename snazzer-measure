@@ -195,7 +195,7 @@ assert_gpg_secring_excluded() {
         echo "ERROR: no gpg2 --list-secret-keys" >&2
         exit 10
     fi
-    EXCL_FILE=$( glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE" )
+    EXCL_FILE=$(glob2grep_file "$SNAZZER_SUBVOLS_EXCLUDE_FILE") || exit $?
     N=$(gpg2 --list-secret-keys | grep '^/' | xargs readlink -f | \
         grep -v -f "$EXCL_FILE" | \
         (xargs --no-run-if-empty df -t btrfs 2>/dev/null) | wc -l)
