@@ -11,6 +11,8 @@ install:
     - sudo add-apt-repository ppa:ubuntu-lxc/buildd-backports -y
     - sudo apt-get update -y
     - sudo apt-get install btrfs-tools cabal-install -y
+      # for some reason, this is required to get all tags
+      # in case a tag only exists on the branch of a PR for master
     - git fetch --tags
 
 script:
