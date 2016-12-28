@@ -7,6 +7,12 @@ First official snazzer release.
 
 ### Added ###
 ### Changed ###
+- Snazzer doesn't treat all patterns in `/` like they were implicitly pre- and suffixed with `*`.
+  This behaviour now has to be specified explicitly.
+- Snazzer now explicitly makes subvolumes absolute by prefixing with `/`.
+  - All entries in `/etc/snazzer/exclude.patterns` need to be either absolute
+    (start with `/`) or start with a `*`.
+  - Paths displayed by snazzer are now absolute as well.
 ### Deprecated ###
 ### Removed ###
 ### Fixed ###

@@ -2,5 +2,6 @@
 /var/lib/docker/*
 */.snapshots
 /tmp
+foo
 *backup*
 *secret*

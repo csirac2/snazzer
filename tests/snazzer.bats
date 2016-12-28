@@ -47,6 +47,13 @@ expected_snapshots_raw() {
     [ "$status" = "0" ]
 }
 
+@test "snazzer --all check excludefile syntax" {
+    SNAZZER_SUBVOLS_EXCLUDE_FILE=$BATS_TEST_DIRNAME/data/exclude.patterns.error
+    run snazzer --all --dry-run "$MNT"
+    # 12 means that snazzer detected the errors in the file
+    [ "$status" = "12" ]
+}
+
 @test "snazzer --all [mountpoint]" {
     run snazzer --all "$MNT"
     expected_snapshots | sort > $(expected_file)
