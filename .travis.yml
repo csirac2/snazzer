@@ -11,6 +11,7 @@ install:
     - sudo add-apt-repository ppa:ubuntu-lxc/buildd-backports -y
     - sudo apt-get update -y
     - sudo apt-get install btrfs-tools cabal-install -y
+    - git fetch --tags
 
 script:
     - make test
