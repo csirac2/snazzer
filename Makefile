@@ -1,4 +1,6 @@
-all: markdown manpages AUTHORS.md
+all: markdown manpages
+
+release: all AUTHORS.md CHANGELOG.md
 
 INSTALL_PREFIX:=/usr/local
 ls_bin        :=$(shell find . -maxdepth 1 -executable -type f -printf '%P\n')
@@ -94,6 +96,26 @@ AUTHORS.md:
 	git log --format='- %aN <%aE>'  | \
 		sort -u |grep -v 'Paul.W Harvey <csirac2@gmail.com>' >> $@
 
+# Print "0.0.1" from "v0.0.1-2-g4cb93f4", see also: tests/fixtures.sh
+define git-describe-snazzer-version
+$(shell git describe --tags | sed -n 's/v\?\([0-9.]*\).*/\1/p')
+endef
+
+define snazzer-version-escaped
+$(subst .,\.,$(call git-describe-snazzer-version))
+endef
+
+# Sanity-check the changelog
+CHANGELOG.md:
+	@echo "Building snazzer version $(call git-describe-snazzer-version)"
+	@printf "Checking there's a $@ entry for this version:\n    "
+	@grep '^## $(call snazzer-version-escaped) - ' $@
+	@printf "Checking the [Unreleased] URL:\n    "
+	@grep '^\[Unreleased\]: https://github.com/csirac2/snazzer/compare/v$(call \
+		snazzer-version-escaped)...HEAD' $@
+
+.PHONY: CHANGELOG.md
+
 # assumes "#!/usr/bin/env foo", rewrites to "#!/path/to/foo"
 rewrite-shebangs-to-bin:
 	for script in $(call ls_bin);\
@@ -113,5 +135,5 @@ rewrite-shebangs-to-env:
 	done
 
 .PHONY: install uninstall install-bin install-man markdown manpages
-.PHONY: all clean distclean test bats-tests bats prune-tests
+.PHONY: all release clean distclean test bats-tests bats prune-tests
 .PHONY: rewrite-shebangs-to-bin rewrite-shebangs-to-env
