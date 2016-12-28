@@ -71,12 +71,12 @@ shellcheck:
 		cabal install ShellCheck;\
 	)
 
-markdown: $(addprefix doc/, $(addsuffix .md, $(call ls_bin)))
+markdown: $(addprefix docs/, $(addsuffix .md, $(call ls_bin)))
 
-doc/%.md: % | doc
+docs/%.md: % | docs
 	./$< --man-markdown >$@
 
-doc:
+docs:
 	mkdir $@
 
 manpages: $(addprefix man/, $(addsuffix .8.gz, $(call ls_bin)))

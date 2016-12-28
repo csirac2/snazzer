@@ -12,6 +12,9 @@ First official snazzer release.
 ### Fixed ###
 
 ## 0.0.2 - 2016-12-28 ##
+### Changed ###
+- Renamed doc/ -> docs/ for future github-pages work
+
 ### Added ###
 - --version switch implemented on all scripts
 
@@ -23,5 +26,5 @@ breaking changes between the current state and the first official release.
 
 This uses [Keep a CHANGELOG](http://keepachangelog.com/) as a template.
 
-[Unreleased]: https://github.com/csirac2/snazzer/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/csirac2/snazzer/compare/v0.0.2...HEAD
 [0.0.2]: https://github.com/csirac2/snazzer/compare/v0.0.1...v0.0.2
