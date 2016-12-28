@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use 5.010;
 use Cwd 'abs_path';
-our $VERSION = '0.0.1';
+our $VERSION = '0.0.2';
 
 # Hrm, let's see if I can remember how to perl...
 BEGIN {

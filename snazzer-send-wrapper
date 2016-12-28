@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 set -e
-SNAZZER_VERSION=0.0.1
+SNAZZER_VERSION=0.0.2
 export PATH=/bin:/usr/bin:/sbin:/usr/local/bin
 
 log_cmd() {
