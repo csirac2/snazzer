@@ -59,6 +59,7 @@ snapshots already measured by current hostname
 - **--list-snapshots**: list snapshots under subvolumes as above
 - **--dry-run**: print rather than execute commands that would be run
 - **--help**: Brief help message
+- **--version**: Print version
 - **--man**: Full documentation
 - **--man-roff**: Full documentation as \*roff output, Eg:
 
