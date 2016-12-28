@@ -486,6 +486,7 @@ DO_ALL=0
 while [ "$(echo "$1" | grep -c "^-" || true)" != 0 ]
 do
     case "$1" in
+        -v | --version ) echo "$SNAZZER_VERSION"; exit; ;;
         -h | --help ) pod2usage -exit 0 "$0"; exit ;;
              --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
              --man-roff ) pod2man --release=$SNAZZER_VERSION "$0"; exit ;;
@@ -657,6 +658,8 @@ snapshots already measured by current hostname
 =item B<--dry-run>: print rather than execute commands that would be run
 
 =item B<--help>: Brief help message
+
+=item B<--version>: Print version
 
 =item B<--man>: Full documentation
 

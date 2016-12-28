@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -e
+SNAZZER_VERSION=0.0.1
 export PATH=/bin:/usr/bin:/sbin:/usr/local/bin
 
 log_cmd() {
@@ -202,6 +203,7 @@ HERE
 
 case "$1" in
     -h | --help ) pod2usage -exit 0 "$0"; exit ;;
+    -v | --version ) echo "$SNAZZER_VERSION"; exit; ;;
          --man ) pod2usage -exit 0 -verbose 3 "$0"; exit ;;
          --man-roff ) pod2man --release="$SNAZZER_VERSION" "$0"; exit ;;
          --man-markdown )
@@ -252,6 +254,8 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
 =over
 
 =item B<--help>: Brief help message
+
+=item B<--version>: Print version
 
 =item B<--man>: Full documentation
 

@@ -470,6 +470,10 @@ LOCAL_RUN=0
 while [ "$(echo "$1" | grep -c "^-")" != "0" ] && [ "$LOCAL_RUN" != "1" ]
 do
     case "$1" in
+        -v | --version )
+            echo "$SNAZZER_VERSION"
+            exit
+            ;;
         -h | --help )
             pod2usage -exit 0 "$0"
             exit
@@ -573,6 +577,8 @@ file usually at C<$HOME/.ssh/config>.
 =item B<--dry-run>: print rather than execute commands that would be run
 
 =item B<--help>: Brief help message
+
+=item B<--version>: Print version
 
 =item B<--man>: Full documentation
 
