@@ -12,7 +12,7 @@ First official snazzer release.
 ### Fixed ###
 
 ## 0.0.1 - 2016-12-28 ##
-Inofficial pre-release of the current state of snazzer, as there will be
+Unofficial pre-release of the current state of snazzer, as there will be
 breaking changes between the current state and the first official release.
 
 
