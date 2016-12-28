@@ -1,6 +1,6 @@
-var/cache
-var/lib/docker/*
-.snapshots
-tmp
+/var/cache
+/var/lib/docker/*
+*/.snapshots
+/tmp
 *backup*
 *secret*
