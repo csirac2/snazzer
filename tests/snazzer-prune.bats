@@ -47,10 +47,18 @@ $SNAP"; else THIS=$SNAP; fi
     mkfs.btrfs --help
 }
 
-@test "snazzer in PATH" {
-    readlink -f $BATS_TEST_DIRNAME/../snazzer > $(expected_file)
-    readlink -f $(which snazzer) > $(actual_file)
+@test "snazzer-prune-candidates in PATH" {
+    readlink -f $BATS_TEST_DIRNAME/../snazzer-prune-candidates > $(expected_file)
+    readlink -f $(which snazzer-prune-candidates) > $(actual_file)
     diff -u $(expected_file) $(actual_file)   
+}
+
+@test "snazzer-prune-candidates --version" {
+    run snazzer-prune-candidates --version
+    git_describe_snazzer_version > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
 }
 
 @test  "snazzer --prune --all [mountpoint]" {

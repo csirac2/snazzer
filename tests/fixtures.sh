@@ -9,6 +9,11 @@ su_do() {
     fi
 }
 
+# Print "0.0.1" from "v0.0.1-2-g4cb93f4"
+git_describe_snazzer_version() {
+    git describe --tags | sed -n 's/v\?\([0-9.]*\).*/\1/p'
+}
+
 gen_subvol_list() {
     for SUBVOL in srv 'srv/s p a c e' home var/cache var/lib/docker/btrfs \
         'echo `ls "/"; ls /;`; ~!@#$(ls)%^&*()_+-='\''[]'\''{}|:<>,./?' \

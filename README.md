@@ -42,11 +42,11 @@ Supporting scripts are also fully documented:
     snazzer-prune-candidates --man # Support script, used by snazzer[-receive]
     
 These man pages are also available at:
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer.md
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-receive.md
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-measure.md
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-send-wrapper.md
-* https://github.com/csirac2/snazzer/blob/master/doc/snazzer-prune-candidates.md
+* [docs/snazzer.md](docs/snazzer.md)
+* [docs/snazzer-receive.md](docs/snazzer-receive.md)
+* [docs/snazzer-measure.md](docs/snazzer-measure.md)
+* [docs/snazzer-send-wrapper.md](docs/snazzer-send-wrapper.md)
+* [docs/snazzer-prune-candidates.md](docs/snazzer-prune-candidates.md)
 
 ### Snapshotting and pruning
 

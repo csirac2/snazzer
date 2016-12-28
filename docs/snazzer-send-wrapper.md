@@ -19,6 +19,7 @@ snazzer-send-wrapper - ssh forced command wrapper for snazzer-receive
 # OPTIONS
 
 - **--help**: Brief help message
+- **--version**: Print version
 - **--man**: Full documentation
 - **--man-roff**: Full documentation as \*roff output, Eg:
 

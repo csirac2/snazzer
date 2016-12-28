@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use 5.010;
 use Cwd 'abs_path';
-our $VERSION = 0.1;
+our $VERSION = '0.0.2';
 
 # Hrm, let's see if I can remember how to perl...
 BEGIN {
@@ -32,6 +32,7 @@ my %retain_env_map =
 my %opts = (
     man             => 0,
     help            => 0,
+    version         => 0,
     verbose         => 0,
     run_tests       => 0,
     gen_examples    => 0,
@@ -43,6 +44,7 @@ my %retain;
 sub init {
     GetOptions(
         'help|?'            => \$opts{help},
+        'version|v'         => \$opts{version},
         'man'               => \$opts{man},
         'man-markdown'      => \$opts{'man-markdown'},
         'man-roff'          => \$opts{'man-roff'},
@@ -58,6 +60,10 @@ sub init {
     ) or pod2usage(2);
     if ( $opts{help} ) {
         pod2usage(1);
+    }
+    elsif ( $opts{version} ) {
+        print "$VERSION\n";
+        exit;
     }
     elsif ( $opts{man} ) {
         pod2usage( -exitval => 0, -verbose => 2 );
@@ -1131,6 +1137,8 @@ those which are no longer needed to meet retention preferences
 =item B<--verbose:> Verbose debugging output to STDERR
 
 =item B<--help:> Brief help message
+
+=item B<--version:> Print version number
 
 =item B<--man:> Full documentation
 

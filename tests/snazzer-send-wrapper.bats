@@ -20,6 +20,14 @@ setup() {
     diff -u $(expected_file) $(actual_file)
 }
 
+@test "snazzer-send-wrapper --version" {
+    run snazzer-send-wrapper --version
+    git_describe_snazzer_version > $(expected_file)
+    echo "$output" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
+}
+
 @test "snazzer-send-wrapper" {
     run snazzer-send-wrapper
     [ "$status" -eq "1" ]
