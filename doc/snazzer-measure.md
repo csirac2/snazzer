@@ -25,6 +25,7 @@ The output includes:
 # OPTIONS
 
 - **--help**: Brief help message
+- **--version**: Print version
 - **--man**: Full documentation
 - **--man-roff**: Full documentation as \*roff output, Eg:
 

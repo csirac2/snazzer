@@ -19,6 +19,7 @@ those which are no longer needed to meet retention preferences
 - **--gen-example-input:** Generate example datetime strings for testing
 - **--verbose:** Verbose debugging output to STDERR
 - **--help:** Brief help message
+- **--version:** Print version number
 - **--man:** Full documentation
 - **--man-roff:** Full documentation as \*roff output, Eg:
 
