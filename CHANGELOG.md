@@ -2,9 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 0.0.3 - 2017-06-13 ##
-
-### Added ###
+## [0.0.3] - 2017-06-13 ##
 ### Changed ###
 - Snazzer doesn't treat all patterns in `/` like they were implicitly pre- and suffixed with `*`.
   This behaviour now has to be specified explicitly.
@@ -12,12 +10,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
   - All entries in `/etc/snazzer/exclude.patterns` need to be either absolute
     (start with `/`) or start with a `*`.
   - Paths displayed by snazzer are now absolute as well.
-### Deprecated ###
-### Removed ###
 ### Fixed ###
 - snazzer-receive compatibility issue with btrfs-progs 4.11 onwards
 
-## 0.0.2 - 2016-12-28 ##
+## [0.0.2] - 2016-12-28 ##
+First official snazzer release.
 ### Changed ###
 - Renamed doc/ -> docs/ for future github-pages work
 
@@ -26,7 +23,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## 0.0.1 - 2016-12-28 ##
 Unofficial pre-release of the current state of snazzer, as there will be
-breaking changes between the current state and the first official release.
+breaking changes between the current state and official releases in the near future.
 
 
 
