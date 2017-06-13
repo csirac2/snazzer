@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 set -e
-SNAZZER_VERSION=0.0.2
+SNAZZER_VERSION=0.0.3
 
 # Keep in sync with the POD!
 default_snazzer_sig_func() {
