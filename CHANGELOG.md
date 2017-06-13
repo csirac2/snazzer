@@ -2,8 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 0.1.0 - 2017-XY-XY? ##
-First official snazzer release.
+## 0.0.3 - 2017-06-13 ##
 
 ### Added ###
 ### Changed ###
@@ -16,6 +15,7 @@ First official snazzer release.
 ### Deprecated ###
 ### Removed ###
 ### Fixed ###
+- snazzer-receive compatibility issue with btrfs-progs 4.11 onwards
 
 ## 0.0.2 - 2016-12-28 ##
 ### Changed ###
@@ -32,5 +32,6 @@ breaking changes between the current state and the first official release.
 
 This uses [Keep a CHANGELOG](http://keepachangelog.com/) as a template.
 
-[Unreleased]: https://github.com/csirac2/snazzer/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/csirac2/snazzer/compare/v0.0.3...HEAD
 [0.0.2]: https://github.com/csirac2/snazzer/compare/v0.0.1...v0.0.2
+[0.0.3]: https://github.com/csirac2/snazzer/compare/v0.0.2...v0.0.3

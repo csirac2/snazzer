@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 set -e
-SNAZZER_VERSION=0.0.2
+SNAZZER_VERSION=0.0.3
 SNAZZER_MEAS_LOCK_DIR="/var/lock/snazzer-measure.lock"
 SNAZZER_SNAPSHOTZ_PERMS=0700
 
