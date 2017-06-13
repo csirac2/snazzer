@@ -110,12 +110,12 @@ there" > $(expected_file b)
     [ "$status" = "98" ]
 }
 
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' '-p' '-/subvol/.snapshotz/FOO1'" {
+@test "sudo -n btrfs send '-p' '-/subvol/.snapshotz/FOO1' '/subvol/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     [ "$status" = "98" ]
 }
 
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO1' '-p' '/subvol/.snapshotz/FOO2' '/subvol/.snapshotz/FOO3'" {
+@test "sudo -n btrfs send '-p' '/subvol/.snapshotz/FOO2' '/subvol/.snapshotz/FOO1' '/subvol/.snapshotz/FOO3'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     [ "$status" = "98" ]
 }
@@ -163,12 +163,12 @@ send
     [ "$status" = "2" ]
 }
 
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' '-p'" {
+@test "sudo -n btrfs send '-p' '/subvol/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     [ "$status" = "98" ]
 }
 
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' '-p' '/subvol/.snapshotz/FOO1'" {
+@test "sudo -n btrfs send '-p' '/subvol/.snapshotz/FOO1' '/subvol/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     echo "6" > $(expected_file)
     echo "$output" > $(actual_file)
@@ -178,20 +178,20 @@ send
     echo "-n
 btrfs
 send
-/subvol/.snapshotz/FOO2
 -p
-/subvol/.snapshotz/FOO1" > $(expected_file b)
+/subvol/.snapshotz/FOO1
+/subvol/.snapshotz/FOO2" > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
     [ "$status" = "0" ]
 }
 
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' -p '/subvol/.snapshotz/FOO1'" {
+@test "sudo -n btrfs send -p '/subvol/.snapshotz/FOO1' '/subvol/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
-    [ "$status" = "99" ]
+    [ "$status" = "2" ]
 }
 
-@test "sudo -n btrfs send '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO2' '-p' '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO1'" {
+@test "sudo -n btrfs send '-p' '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO1' '/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='\\''[]'\\''{}|:<>,./?/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     echo "6" > $(expected_file)
     echo "$output" > $(actual_file)
@@ -201,9 +201,9 @@ send
     echo "-n
 btrfs
 send
-/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='[]'{}|:<>,./?/.snapshotz/FOO2
 -p
-/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='[]'{}|:<>,./?/.snapshotz/FOO1" \
+/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='[]'{}|:<>,./?/.snapshotz/FOO1
+/echo \`ls \"/\"; ls /;\`; ~!@#\$(ls)%^&*()_+-='[]'{}|:<>,./?/.snapshotz/FOO2" \
     > $(expected_file b)
     echo "$output" > $(actual_file b)
     diff -u $(expected_file b) $(actual_file b)
@@ -238,7 +238,7 @@ send
 }
 
 # snapshots != snapshotz
-@test "sudo -n btrfs send '/subvol/.snapshotz/FOO2' '-p' '/subvol/.snapshots/FOO1'" {
+@test "sudo -n btrfs send '-p' '/subvol/.snapshots/FOO1' '/subvol/.snapshotz/FOO2'" {
     SSH_ORIGINAL_COMMAND="$BATS_TEST_DESCRIPTION" F=no_args run snazzer-send-wrapper
     [ "$status" = "98" ]
 }

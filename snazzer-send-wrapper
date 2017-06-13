@@ -128,14 +128,14 @@ dispatch_cmd() {
             sudo -n snazzer --list-snapshots "$@"
             ;;
         btrfs_send_p)
-            if [ "$#" = "3" ] && [ "$2" = "-p" ] && \
+            if [ "$#" = "2" ] && \
                 [ "$(echo "$1" | cut -c 1)" != "-" ] && \
-                [ "$(echo "$3" | cut -c 1)" != "-" ];
+                [ "$(echo "$2" | cut -c 1)" != "-" ];
             then
-                log_cmd "sudo -n btrfs send $(squote_args "$1") -p $(squote_args "$3")"
-                sudo -n btrfs send "$1" -p "$3"
+                log_cmd "sudo -n btrfs send -p $(squote_args "$1") $(squote_args "$2")"
+                sudo -n btrfs send -p "$1" "$2"
             else
-                log_cmd_and_exit 98 "btrfs send X -p Y bad no. args or switches"
+                log_cmd_and_exit 98 "btrfs send -p X Y bad no. args or switches"
             fi
             ;;
         btrfs_send)
@@ -180,8 +180,8 @@ run_cmd() {
             ARGS="$(echo "$CMD" | sed "s|^sudo -n grep -srl ||g")"
             dispatch_cmd "grep_srl" "$ARGS"
             ;;
-        "sudo -n btrfs send '"*"/.snapshotz/"*"' '-p' '"*"/.snapshotz/"*"'")
-            ARGS="$(echo "$CMD" | sed "s|^sudo -n btrfs send ||g")"
+        "sudo -n btrfs send '-p' '"*"/.snapshotz/"*"' '"*"/.snapshotz/"*"'")
+            ARGS="$(echo "$CMD" | sed "s|^sudo -n btrfs send '-p' ||g")"
             dispatch_cmd "btrfs_send_p" "$ARGS"
             ;;
         "sudo -n btrfs send '"*"/.snapshotz/"*"'")
