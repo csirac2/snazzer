@@ -250,6 +250,8 @@ snapshot() {
         DEST="$SUBVOL/.snapshotz"
     fi
     $SUDO mkdir -p "$DEST" --mode="$SNAZZER_SNAPSHOTZ_PERMS"
+    $SUDO chown --reference "$SUBVOL" "$DEST"
+    $SUDO chgrp --reference "$SUBVOL" "$DEST"
     if [ "$DRY_RUN" = "1" ]; then
         dry_snapshot "$SUBVOL" "$DEST/$SNAZZER_DATE"
     else
@@ -722,6 +724,14 @@ This makes for consistency across all subvolumes and filesystems, so that
 identifying which snapshots were part of a given snapshotting run is possible.
 If the actual datetime of the snapshot event is important to you, this is
 available from the C<btrfs subvolume show> command.
+
+=item * Snapshot access
+
+By default, the C<.snapshotz> folder is only read- and writable by the owner
+of the snapshotted subvolume, group and others have no permission for
+anything. This is on purpose, to protect information leaks from the snapshots.
+If you need more open access rights, you can always change ownership and
+permissions by hand.
 
 =item * SNAZZER_SUBVOLS_EXCLUDE_FILE is used with grep -f
 

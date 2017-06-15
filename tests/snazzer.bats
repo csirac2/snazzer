@@ -62,6 +62,14 @@ expected_snapshots_raw() {
     [ "$status" = "0" ]
 }
 
+@test "snazzer copies user and group of source" {
+    run snazzer --all "$MNT"
+    stat "$MNT" --format "%U:%G" > $(expected_file)
+    stat "$MNT/.snapshotz" --format "%U:%G" > $(actual_file)
+    diff -u $(expected_file) $(actual_file)
+    [ "$status" = "0" ]
+}
+
 @test "snazzer --dry-run --all [mountpoint]" {
     run snazzer --dry-run --all "$MNT"
     [ "$status" = "0" ]

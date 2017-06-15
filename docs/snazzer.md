@@ -99,6 +99,14 @@ snapshots already measured by current hostname
     If the actual datetime of the snapshot event is important to you, this is
     available from the `btrfs subvolume show` command.
 
+- Snapshot access
+
+    By default, the `.snapshotz` folder is only read- and writable by the owner
+    of the snapshotted subvolume, group and others have no permission for
+    anything. This is on purpose, to protect information leaks from the snapshots.
+    If you need more open access rights, you can always change ownership and
+    permissions by hand.
+
 - SNAZZER\_SUBVOLS\_EXCLUDE\_FILE is used with grep -f
 
     A minimal (possibly buggy/incomplete) attempt is made to convert the shell glob
